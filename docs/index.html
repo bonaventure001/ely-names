@@ -46,9 +46,11 @@ select,.kid{background:var(--bg);color:var(--ink);border:1px solid var(--line);b
 .nft{width:64px;height:64px;border-radius:10px;border:1px solid var(--line);flex:none}
 .nftd{flex-basis:100%;font-size:14px}.nftd summary{cursor:pointer}
 .sel{user-select:all;word-break:break-all;color:var(--ink)}
-.faq h2{font:800 22px var(--display);margin:56px 0 8px}
-.faq details{border-top:1px solid var(--line);padding:14px 0}.faq details:last-of-type{border-bottom:1px solid var(--line)}
-.faq summary{cursor:pointer;font-weight:500}
+.faq{margin-top:56px}
+.faqwrap{border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.faqwrap>summary{font:800 22px var(--display);padding:16px 0}
+.faqwrap details{border-top:1px solid var(--line);padding:14px 0}.faqwrap details>summary{font-weight:500}
+.faq summary{cursor:pointer}
 .faq p{color:var(--mute);margin:8px 0 0;font-size:15px}.faq a,footer a{color:var(--mint)}
 #status{margin-top:20px;min-height:24px;color:var(--mute);font-size:14px;word-break:break-word}
 #status a{color:var(--mint)}
@@ -77,7 +79,7 @@ footer{margin-top:60px;color:var(--mute);font-size:13px}
 <div id="status" role="status" aria-live="polite"></div>
 <section id="mine" class="mine"></section>
 <section id="faq" class="faq">
-  <h2>FAQ</h2>
+  <details class="faqwrap" id="faqbox"><summary>FAQ</summary>
   <details><summary>What is a .ely name?</summary><p>A short, readable name linked to your wallet address. People can send crypto to yourname.ely instead of copying a long 0x address.</p></details>
   <details><summary>How much does a name cost?</summary><p>The price is per year, depends on the length of the name (shorter names cost more), and is shown in HYPE before you confirm anything. Renewals are charged at the full price.</p></details>
   <details><summary>How long does a name last?</summary><p>One year. You can renew from the Your names list at any time, and anyone can renew a name. After a name expires you have 90 days to renew it. After that, anyone can register it.</p></details>
@@ -89,6 +91,7 @@ footer{margin-top:60px;color:var(--mute);font-size:13px}
   <details><summary>Is this live on mainnet?</summary><p>Not yet. The service currently runs on the Elysium testnet. Names registered here are for testing and will not carry over to mainnet.</p></details>
   <details><summary>Which wallets work?</summary><p>Browser wallets like MetaMask, and the built-in browser inside wallet apps. On a phone, open this page from inside your wallet app.</p></details>
   <details><summary>Something went wrong. What do I do?</summary><p>Check that your wallet is on Elysium Testnet and has enough HYPE for gas, then try again. If it still fails, <a href="https://x.com/i_am_bona" target="_blank" rel="noopener">contact support on X</a>.</p></details>
+  </details>
 </section>
 <footer>Names last one year and can be renewed by anyone. Contracts run on Elysium testnet. <a href="https://x.com/i_am_bona" target="_blank" rel="noopener">Support</a></footer>
 </main>
@@ -377,6 +380,9 @@ const setPrimary = label => guard(async () => {
 
 // ---------- wire up ----------
 $('connect').onclick = connect;
+const openFaq = () => { $('faqbox').open = true; };
+document.querySelectorAll('a[href="#faq"]').forEach(a => a.addEventListener('click', openFaq));
+if (location.hash === '#faq') openFaq();
 let deb; $('q').oninput = () => { clearTimeout(deb); deb = setTimeout(search, 300); };
 </script>
 </body>
