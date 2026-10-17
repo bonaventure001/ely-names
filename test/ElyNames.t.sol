@@ -39,7 +39,7 @@ contract ElyNamesTest is Test {
         kaola = new MockNFT();
         partnerNft = new MockNFT();
         partnerToken = new MockToken();
-        names = new ElyNames(admin);
+        names = new ElyNames(admin, treasury, 300);
         ctrl = new ElyController(names, kaola, treasury, admin, P_SHORT, P_MID, P_LONG, 5);
         vm.prank(admin);
         names.setController(address(ctrl), true);
@@ -399,6 +399,96 @@ contract ElyNamesTest is Test {
         vm.prank(alice);
         vm.expectRevert();
         ctrl.withdraw();
+    }
+
+    // ─────────── royalties (ERC-2981) ───────────
+
+    function test_royalty_threePercentToTreasury() public {
+        _buy(alice, "longname", 365 days);
+        (address receiver, uint256 amount) = names.royaltyInfo(names.idOf("longname"), 10 ether);
+        assertEq(receiver, treasury);
+        assertEq(amount, 0.3 ether);
+        assertTrue(names.supportsInterface(0x2a55205a)); // ERC-2981
+        assertTrue(names.supportsInterface(0x80ac58cd)); // ERC-721
+    }
+
+    function test_royalty_ownerCanChange_capped_onlyOwner() public {
+        vm.startPrank(admin);
+        names.setRoyalty(bob, 500);
+        vm.expectRevert(ElyNames.RoyaltyTooHigh.selector);
+        names.setRoyalty(bob, 1001);
+        vm.stopPrank();
+        (address r, uint256 a) = names.royaltyInfo(1, 100 ether);
+        assertEq(r, bob);
+        assertEq(a, 5 ether);
+        vm.prank(alice);
+        vm.expectRevert();
+        names.setRoyalty(alice, 100);
+    }
+
+    function test_constructor_royaltyCapped() public {
+        vm.expectRevert(ElyNames.RoyaltyTooHigh.selector);
+        new ElyNames(admin, treasury, 1001);
+    }
+
+    // ─────────── reserved names ───────────
+
+    function _reserve(string memory label) internal {
+        string[] memory l = new string[](1);
+        l[0] = label;
+        vm.prank(admin);
+        ctrl.setReserved(l, true);
+    }
+
+    function test_reserved_blocksPublicRegister() public {
+        _reserve("elysium");
+        assertTrue(ctrl.isReserved("elysium"));
+        _commit(alice, "elysium", alice);
+        vm.prank(alice);
+        vm.expectRevert(ElyController.NameReserved.selector);
+        ctrl.register{value: 1 ether}("elysium", alice, 365 days, secret);
+    }
+
+    function test_reserved_blocksFreeClaim() public {
+        _reserve("kaolateam");
+        kaola.mint(alice, 1);
+        _commit(alice, "kaolateam", alice);
+        vm.prank(alice);
+        vm.expectRevert(ElyController.NameReserved.selector);
+        ctrl.claimFree("kaolateam", 1, secret);
+    }
+
+    function test_reserved_ownerCanAssign_andStaysReserved() public {
+        _reserve("kinetiq");
+        vm.prank(admin);
+        ctrl.registerReserved("kinetiq", bob, 365 days);
+        assertEq(names.ownerOf(names.idOf("kinetiq")), bob);
+        // after it lapses, the public still cannot take it
+        vm.warp(names.nameExpires("kinetiq") + 91 days);
+        _commit(alice, "kinetiq", alice);
+        vm.prank(alice);
+        vm.expectRevert(ElyController.NameReserved.selector);
+        ctrl.register{value: 1 ether}("kinetiq", alice, 365 days, secret);
+    }
+
+    function test_reserved_assignOnlyReservedAndOnlyOwner() public {
+        vm.prank(admin);
+        vm.expectRevert(ElyController.BadParam.selector);
+        ctrl.registerReserved("notreserved", bob, 365 days);
+        _reserve("elysium");
+        vm.prank(alice);
+        vm.expectRevert();
+        ctrl.registerReserved("elysium", alice, 365 days);
+    }
+
+    function test_reserved_canBeReleased() public {
+        _reserve("elysium");
+        string[] memory l = new string[](1);
+        l[0] = "elysium";
+        vm.prank(admin);
+        ctrl.setReserved(l, false);
+        _buy(alice, "elysium", 365 days);
+        assertEq(names.ownerOf(names.idOf("elysium")), alice);
     }
 
     function test_tokenURI_works() public {

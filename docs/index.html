@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>.ely names</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#04181C;--panel:#082a30;--line:#14434b;--ink:#e6fbf6;--mute:#8fb5b0;--mint:#97FCE4;--bad:#ff9a8a;
+--display:'Bricolage Grotesque',system-ui,sans-serif;--body:'DM Sans',system-ui,sans-serif;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.55 var(--body);min-height:100vh}
+main{max-width:640px;margin:0 auto;padding:20px 20px 80px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0 56px}
+.logo{font:800 26px var(--display);letter-spacing:-.02em}.logo span{color:var(--mint)}
+.net{font-size:13px;color:var(--mute);margin-left:10px;border:1px solid var(--line);border-radius:99px;padding:2px 10px}
+button{font:500 15px var(--body);cursor:pointer;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--ink);padding:10px 16px}
+button:hover:not(:disabled){border-color:var(--mint)}button:disabled{opacity:.5;cursor:not-allowed}
+button.go{background:var(--mint);color:var(--bg);border-color:var(--mint);font-weight:700}
+:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
+h1{font:800 clamp(34px,7vw,54px)/1.05 var(--display);letter-spacing:-.03em;margin:0 0 14px}
+.sub{color:var(--mute);margin:0 0 32px;max-width:46ch}
+.search{display:flex;align-items:baseline;border-bottom:2px solid var(--line);padding-bottom:6px;transition:border-color .2s}
+.search:focus-within{border-color:var(--mint)}
+.search input{flex:1;min-width:0;background:none;border:0;color:var(--ink);font:800 clamp(34px,9vw,60px) var(--display);letter-spacing:-.03em;padding:0}
+.search input:focus{outline:0}.search input::placeholder{color:#2c5a60}
+.tld{font:800 clamp(34px,9vw,60px) var(--display);color:var(--mint)}
+.card{margin-top:28px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
+.row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+.name{font:800 24px var(--display)}.price{font:700 22px var(--display);color:var(--mint)}
+.mute{color:var(--mute);font-size:14px}.bad{color:var(--bad)}
+select,.kid{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:500 15px var(--body)}
+.kid{width:120px}
+.free{margin-top:16px;padding-top:16px;border-top:1px dashed var(--line)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.chip{padding:6px 12px;font-size:14px}.chip[aria-pressed=true]{border-color:var(--mint);color:var(--mint)}
+.mine h2{font:800 20px var(--display);margin:44px 0 6px}
+.nrow{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:14px 0;border-top:1px solid var(--line)}
+.nrow button{padding:7px 12px;font-size:14px}.nrow .btns{display:flex;gap:8px;flex-wrap:wrap}
+.badge{color:var(--mint);font-size:13px;border:1px solid var(--mint);border-radius:99px;padding:1px 9px;margin-left:8px;font-weight:500}
+.who{display:flex;align-items:center;gap:14px}
+.nft{width:64px;height:64px;border-radius:10px;border:1px solid var(--line);flex:none}
+.nftd{flex-basis:100%;font-size:14px}.nftd summary{cursor:pointer}
+.sel{user-select:all;word-break:break-all;color:var(--ink)}
+#status{margin-top:20px;min-height:24px;color:var(--mute);font-size:14px;word-break:break-word}
+#status a{color:var(--mint)}
+footer{margin-top:60px;color:var(--mute);font-size:13px}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div><span class="logo">.<span>ely</span></span><span class="net">Testnet</span></div>
+  <button id="connect" class="go">Connect wallet</button>
+</header>
+
+<h1>Your name on Elysium</h1>
+<p class="sub">Register a name that points to your wallet, so people can send to bona.ely instead of 0x7f3a…</p>
+
+<label class="search" for="q">
+  <input id="q" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="yourname" maxlength="63">
+  <span class="tld">.ely</span>
+</label>
+
+<div id="result"></div>
+<div id="status" role="status" aria-live="polite"></div>
+<section id="mine" class="mine"></section>
+<footer>Names last one year and can be renewed by anyone. Contracts run on Elysium testnet.</footer>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+<script>
+const C = {
+  chainId: 99801, chainHex: '0x185d9', rpc: 'https://testnet-rpc.elysium.kinetiq.xyz',
+  explorer: 'https://elysium.kinetiq.xyz/testnet-explorer',
+  names: '0x13A130B336400409c956dF042C128238F1486ddD',
+  ctrl: '0x1dA6a196405dCc455195eb00B4F7D17106164e0A',
+  kaola: '0xE99D7A5CB301f023849888D5F34a43bB7f39D841',
+  fromBlock: 10325100 // just before the names contract was deployed
+};
+const YEAR = 31536000;
+const NAMES_ABI = [
+  'function available(string) view returns (bool)',
+  'function resolve(string) view returns (address)',
+  'function nameExpires(string) view returns (uint256)',
+  'function ownerOf(uint256) view returns (address)',
+  'function primaryNameOf(address) view returns (string)',
+  'function setPrimaryName(uint256)',
+  'function labelOf(uint256) view returns (string)',
+  'function expiries(uint256) view returns (uint64)',
+  'function tokenURI(uint256) view returns (string)',
+  'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)'
+];
+const CTRL_ABI = [
+  'function registerPrice(string,uint256,address) view returns (uint256,uint16)',
+  'function renewPrice(string,uint256) view returns (uint256)',
+  'function makeCommitment(string,address,bytes32) pure returns (bytes32)',
+  'function commit(bytes32)',
+  'function register(string,address,uint256,bytes32) payable',
+  'function claimFree(string,uint256,bytes32)',
+  'function renew(string,uint256) payable',
+  'function kaolaClaimed(uint256) view returns (bool)',
+  'function freeClaimOpen() view returns (bool)',
+  'function freeMinLength() view returns (uint256)',
+  'function isReserved(string) view returns (bool)'
+];
+const NFT_ABI = [
+  'function balanceOf(address) view returns (uint256)',
+  'function tokenOfOwnerByIndex(address,uint256) view returns (uint256)',
+  'function ownerOf(uint256) view returns (address)'
+];
+
+const $ = id => document.getElementById(id);
+const ro = new ethers.providers.JsonRpcProvider(C.rpc);
+const names = new ethers.Contract(C.names, NAMES_ABI, ro);
+const ctrl = new ethers.Contract(C.ctrl, CTRL_ABI, ro);
+const kaola = new ethers.Contract(C.kaola, NFT_ABI, ro);
+let signer = null, me = null, kaolaIds = [], pickedId = '', timer = null, busy = false;
+
+const hype = wei => (+ethers.utils.formatEther(wei)).toLocaleString(undefined, { maximumFractionDigits: 4 });
+const short = a => a.slice(0, 6) + '…' + a.slice(-4);
+const tx = h => `<a href="${C.explorer}/tx/${h}" target="_blank" rel="noopener">View transaction</a> <span class="mute">(${h.slice(0, 12)}…)</span>`;
+const status = (html, bad) => { $('status').innerHTML = bad ? `<span class="bad">${html}</span>` : html; };
+const errText = e => (e && (e.reason || (e.error && e.error.message) || e.message) || 'Something went wrong').toString().slice(0, 160);
+
+function cleanLabel(v) {
+  return v.trim().toLowerCase().replace(/\.ely$/, '');
+}
+function labelProblem(l) {
+  if (!l) return null;
+  if (l.length < 2) return 'Names need at least 2 characters.';
+  if (!/^[a-z0-9-]+$/.test(l)) return 'Use only a-z, 0-9 and hyphens.';
+  if (l.startsWith('-') || l.endsWith('-')) return 'A name cannot start or end with a hyphen.';
+  return null;
+}
+
+// ---------- wallet ----------
+async function connect() {
+  if (!window.ethereum) return status('No wallet found. Install MetaMask or open this site in your wallet\'s browser.', true);
+  try {
+    await window.ethereum.request({ method: 'eth_requestAccounts' });
+    try {
+      await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: C.chainHex }] });
+    } catch (e) {
+      await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [{
+        chainId: C.chainHex, chainName: 'Elysium Testnet', rpcUrls: [C.rpc],
+        nativeCurrency: { name: 'HYPE', symbol: 'HYPE', decimals: 18 }, blockExplorerUrls: [C.explorer] }] });
+    }
+    const p = new ethers.providers.Web3Provider(window.ethereum);
+    signer = p.getSigner(); me = await signer.getAddress();
+    const primary = await names.primaryNameOf(me).catch(() => '');
+    $('connect').textContent = primary || short(me);
+    $('connect').classList.remove('go');
+    status('');
+    loadKaola(); search(); loadMine();
+  } catch (e) { status(errText(e), true); }
+}
+if (window.ethereum) window.ethereum.on && window.ethereum.on('accountsChanged', () => location.reload());
+
+async function loadKaola() {
+  kaolaIds = [];
+  try {
+    const n = Math.min((await kaola.balanceOf(me)).toNumber(), 30);
+    const ids = await Promise.all([...Array(n).keys()].map(i => kaola.tokenOfOwnerByIndex(me, i)));
+    for (const id of ids) kaolaIds.push({ id: id.toString(), claimed: await ctrl.kaolaClaimed(id) });
+  } catch (e) { /* collection may not list tokens; manual entry still works */ }
+  search();
+}
+
+// ---------- search ----------
+let seq = 0;
+async function search() {
+  const label = cleanLabel($('q').value);
+  const my = ++seq;
+  const out = $('result');
+  if (!label) { out.innerHTML = ''; return; }
+  const problem = labelProblem(label);
+  if (problem) { out.innerHTML = `<div class="card bad">${problem}</div>`; return; }
+  out.innerHTML = '<div class="card mute">Checking…</div>';
+  try {
+    const free = await names.available(label);
+    if (my !== seq) return;
+    if (free) return renderAvailable(label);
+    const [owner, exp] = await Promise.all([names.resolve(label), names.nameExpires(label)]);
+    if (my !== seq) return;
+    renderTaken(label, owner, exp.toNumber());
+  } catch (e) { out.innerHTML = `<div class="card bad">Could not reach Elysium. ${errText(e)}</div>`; }
+}
+
+async function renderAvailable(label) {
+  const out = $('result');
+  if (await ctrl.isReserved(label)) {
+    out.innerHTML = `<div class="card"><div class="name">${label}.ely</div><div class="mute">Reserved. This name is protected. If it belongs to your project, contact the .ely team.</div></div>`;
+    return;
+  }
+  const years = +(document.getElementById('yrs') || { value: 1 }).value || 1;
+  const [price, bps] = await ctrl.registerPrice(label, YEAR * years, me || ethers.constants.AddressZero);
+  const [open, minLen] = await Promise.all([ctrl.freeClaimOpen(), ctrl.freeMinLength()]);
+  const canFree = open && label.length >= minLen.toNumber();
+  const disc = bps > 0 ? `<div class="mute">${bps / 100}% partner discount applied to your first year.</div>` : '';
+  out.innerHTML = `
+  <div class="card">
+    <div class="row"><div><div class="name">${label}.ely</div><div class="mute">Available</div></div>
+      <div class="price" id="price">${price.isZero() ? 'Free' : hype(price) + ' HYPE'}</div></div>
+    ${disc}
+    <div class="row" style="margin-top:16px">
+      <label class="mute">Length <select id="yrs">${[1, 2, 3, 5].map(y => `<option value="${y}" ${y === years ? 'selected' : ''}>${y} year${y > 1 ? 's' : ''}</option>`).join('')}</select></label>
+      <button class="go" id="buy">${me ? 'Register ' + label + '.ely' : 'Connect wallet to register'}</button>
+    </div>
+    ${canFree ? freeBlock(label, minLen.toNumber()) : (open ? `<div class="mute free">Free Kaola claims need names of ${minLen} characters or more.</div>` : '')}
+  </div>`;
+  $('yrs').onchange = () => renderAvailable(label);
+  $('buy').onclick = () => me ? register(label, +$('yrs').value) : connect();
+  if ($('claim')) {
+    $('claim').onclick = () => me ? claim(label) : connect();
+    $('kid').oninput = e => { pickedId = e.target.value; };
+    document.querySelectorAll('.chip').forEach(b => b.onclick = () => {
+      pickedId = b.dataset.id; $('kid').value = pickedId;
+      document.querySelectorAll('.chip').forEach(x => x.setAttribute('aria-pressed', x === b));
+    });
+  }
+}
+function freeBlock() {
+  const chips = kaolaIds.map(k => `<button class="chip" data-id="${k.id}" aria-pressed="${k.id === pickedId}" ${k.claimed ? 'disabled title="Already used"' : ''}>Kaola #${k.id}${k.claimed ? ' (used)' : ''}</button>`).join('');
+  return `<div class="free"><div class="name" style="font-size:18px">Free for one year with a Kaola</div>
+    <div class="mute">Each Kaola can claim one name, once.</div>
+    ${chips ? `<div class="chips">${chips}</div>` : ''}
+    <div class="row"><label class="mute">Kaola ID <input class="kid" id="kid" inputmode="numeric" value="${pickedId}"></label>
+    <button class="go" id="claim">${me ? 'Claim free' : 'Connect wallet to claim'}</button></div></div>`;
+}
+
+function renderTaken(label, owner, exp) {
+  const date = new Date(exp * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  const expired = exp * 1000 < Date.now();
+  const mine = me && owner.toLowerCase() === me.toLowerCase();
+  $('result').innerHTML = `<div class="card">
+    <div class="row"><div><div class="name">${label}.ely</div>
+    <div class="mute">${expired ? 'Expired, in grace period (the owner can still renew)' : 'Taken'} · ${expired ? 'ended' : 'renews by'} ${date}</div>
+    <div class="mute">${expired ? '' : 'Points to ' + (owner === ethers.constants.AddressZero ? 'nothing' : short(owner))}</div></div></div>
+    ${mine ? `<div class="row" style="margin-top:16px"><button id="renew">Renew 1 year</button><button class="go" id="prim">Set as my primary name</button></div>` : ''}
+  </div>`;
+  if (mine) { $('renew').onclick = () => renew(label); $('prim').onclick = () => setPrimary(label); }
+}
+
+// ---------- my names ----------
+async function getLogs(filter) {
+  try { return await names.queryFilter(filter, C.fromBlock); }
+  catch (e) {
+    const head = await ro.getBlockNumber(), all = [];
+    for (let s = C.fromBlock; s <= head; s += 50000)
+      all.push(...await names.queryFilter(filter, s, Math.min(s + 49999, head)));
+    return all;
+  }
+}
+const fmtDate = t => new Date(t * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+async function loadMine() {
+  const box = $('mine');
+  if (!me) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="mute">Loading your names…</div>';
+  try {
+    const [out, inc, primary] = await Promise.all([
+      getLogs(names.filters.Transfer(me, null)),
+      getLogs(names.filters.Transfer(null, me)),
+      names.primaryNameOf(me).catch(() => '')
+    ]);
+    // The newest transfer involving this wallet decides whether it still holds each name.
+    const last = {};
+    [...out, ...inc].sort((a, b) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex)
+      .forEach(l => { last[l.args.tokenId.toString()] = l.args.to.toLowerCase(); });
+    const ids = Object.keys(last).filter(id => last[id] === me.toLowerCase());
+    const GRACE = 90 * 86400;
+    const rows = (await Promise.all(ids.map(async id => {
+      const [label, exp, uri] = await Promise.all([names.labelOf(id), names.expiries(id), names.tokenURI(id).catch(() => '')]);
+      let img = '';
+      try { img = JSON.parse(atob(uri.split(',')[1])).image || ''; } catch (e) { /* no preview */ }
+      return { id, label, exp: Number(exp), img };
+    }))).filter(n => n.exp + GRACE > Date.now() / 1000).sort((a, b) => a.label.localeCompare(b.label));
+    const list = rows.map(n => {
+      const expired = n.exp < Date.now() / 1000;
+      const isPrimary = primary === n.label + '.ely';
+      return `<div class="nrow"><div class="who">${n.img ? `<img class="nft" src="${n.img}" alt="${n.label}.ely NFT">` : ''}<div><span class="name" style="font-size:20px">${n.label}.ely</span>${isPrimary ? '<span class="badge">Primary</span>' : ''}
+        <div class="mute ${expired ? 'bad' : ''}">${expired ? 'Expired. Renew by ' + fmtDate(n.exp + GRACE) : 'Expires ' + fmtDate(n.exp)}</div></div></div>
+        <div class="btns"><button data-renew="${n.label}">Renew 1 year</button>${isPrimary ? '' : `<button data-prim="${n.label}">Make primary</button>`}<button data-nft="${n.id}">Add NFT to wallet</button></div>
+        <details class="nftd"><summary class="mute">NFT details</summary><div class="mute">Contract: <span class="sel">${C.names}</span><br>Token ID: <span class="sel">${n.id}</span></div></details></div>`;
+    }).join('');
+    box.innerHTML = '<h2>Your names</h2>' + (list || '<div class="mute">No names in this wallet yet. Search one above.</div>');
+    box.querySelectorAll('[data-renew]').forEach(b => b.onclick = () => renew(b.dataset.renew));
+    box.querySelectorAll('[data-prim]').forEach(b => b.onclick = () => setPrimary(b.dataset.prim));
+    box.querySelectorAll('[data-nft]').forEach(b => b.onclick = () => watchNft(b.dataset.nft));
+  } catch (e) { box.innerHTML = `<div class="mute bad">Could not load your names. ${errText(e)}</div>`; }
+}
+
+async function watchNft(id) {
+  try {
+    await window.ethereum.request({ method: 'wallet_watchAsset', params: { type: 'ERC721', options: { address: C.names, tokenId: id } } });
+  } catch (e) {
+    status('Your wallet could not add it automatically. In the wallet, open the NFTs tab, choose Import NFT, and paste the contract and token ID from "NFT details".', true);
+  }
+}
+
+// ---------- actions ----------
+async function guard(fn) {
+  if (busy) return; busy = true;
+  document.querySelectorAll('button').forEach(b => b.disabled = true);
+  try { await fn(); loadMine(); } catch (e) { status(errText(e), true); }
+  busy = false;
+  document.querySelectorAll('button').forEach(b => b.disabled = false);
+}
+const wctrl = () => ctrl.connect(signer);
+
+async function commitAndWait(label) {
+  const secret = ethers.utils.hexlify(ethers.utils.randomBytes(32));
+  const c = await ctrl.makeCommitment(label, me, secret);
+  status('Step 1 of 2: confirm the reservation in your wallet…');
+  await (await wctrl().commit(c)).wait();
+  for (let s = 18; s > 0; s--) { status(`Reserved. Registering in ${s}s (this stops others grabbing your name first)…`); await new Promise(r => setTimeout(r, 1000)); }
+  return secret;
+}
+const register = (label, years) => guard(async () => {
+  const secret = await commitAndWait(label);
+  const [price] = await ctrl.registerPrice(label, YEAR * years, me);
+  status('Step 2 of 2: confirm registration in your wallet…');
+  const t = await wctrl().register(label, me, YEAR * years, secret, { value: price });
+  status('Registering…'); await t.wait();
+  status(`${label}.ely is yours. ${tx(t.hash)}`);
+  search();
+});
+const claim = label => guard(async () => {
+  const id = pickedId.trim();
+  if (!/^\d+$/.test(id)) throw new Error('Enter your Kaola ID first.');
+  if ((await kaola.ownerOf(id)).toLowerCase() !== me.toLowerCase()) throw new Error('That Kaola is not in this wallet.');
+  if (await ctrl.kaolaClaimed(id)) throw new Error('That Kaola has already claimed its free name.');
+  const secret = await commitAndWait(label);
+  status('Step 2 of 2: confirm your free claim in your wallet…');
+  const t = await wctrl().claimFree(label, id, secret);
+  status('Claiming…'); await t.wait();
+  status(`${label}.ely is yours for one year. ${tx(t.hash)}`);
+  loadKaola();
+});
+const renew = label => guard(async () => {
+  const p = await ctrl.renewPrice(label, YEAR);
+  status(`Confirm renewal (${hype(p)} HYPE) in your wallet…`);
+  const t = await wctrl().renew(label, YEAR, { value: p });
+  await t.wait(); status(`Renewed for one more year. ${tx(t.hash)}`); search();
+});
+const setPrimary = label => guard(async () => {
+  status('Confirm in your wallet…');
+  const t = await names.connect(signer).setPrimaryName(ethers.utils.id(label));
+  await t.wait(); $('connect').textContent = label + '.ely';
+  status(`${label}.ely is now your primary name. ${tx(t.hash)}`);
+});
+
+// ---------- wire up ----------
+$('connect').onclick = connect;
+let deb; $('q').oninput = () => { clearTimeout(deb); deb = setTimeout(search, 300); };
+</script>
+</body>
+</html>

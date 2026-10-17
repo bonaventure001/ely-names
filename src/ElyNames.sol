@@ -2,16 +2,19 @@
 pragma solidity ^0.8.24;
 
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {ERC2981} from "@openzeppelin/contracts/token/common/ERC2981.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Base64} from "@openzeppelin/contracts/utils/Base64.sol";
 
 /// @title ElyNames
 /// @notice Registry + registrar + resolver + reverse records for `.ely` names, in one contract.
 ///         Every name is an ERC-721 with an expiry. Only approved controllers can register/renew.
-contract ElyNames is ERC721, Ownable2Step {
+contract ElyNames is ERC721, ERC2981, Ownable2Step {
     uint64 public constant GRACE_PERIOD = 90 days;
     uint256 public constant MIN_LABEL_LENGTH = 2;
     uint256 public constant MAX_LABEL_LENGTH = 63;
+    uint96 public constant MAX_ROYALTY_BPS = 1000; // royalty can never be set above 10%
 
     mapping(address => bool) public controllers;
     mapping(uint256 => uint64) public expiries;
@@ -38,14 +41,31 @@ contract ElyNames is ERC721, Ownable2Step {
     error NameExpired();
     error NotNameOwner();
     error TooLateToRenew();
+    error RoyaltyTooHigh();
 
-    constructor(address initialOwner) ERC721("Ely Names", "ELY") Ownable(initialOwner) {}
+    constructor(address initialOwner, address royaltyReceiver, uint96 royaltyBps)
+        ERC721("Ely Names", "ELY")
+        Ownable(initialOwner)
+    {
+        if (royaltyBps > MAX_ROYALTY_BPS) revert RoyaltyTooHigh();
+        _setDefaultRoyalty(royaltyReceiver, royaltyBps); // ERC-2981, e.g. 300 = 3%
+    }
 
     // ───────────────────────── admin ─────────────────────────
 
     function setController(address controller, bool allowed) external onlyOwner {
         controllers[controller] = allowed;
         emit ControllerSet(controller, allowed);
+    }
+
+    /// @notice Change who receives resale royalties and how much (basis points, max 10%).
+    function setRoyalty(address receiver, uint96 bps) external onlyOwner {
+        if (bps > MAX_ROYALTY_BPS) revert RoyaltyTooHigh();
+        _setDefaultRoyalty(receiver, bps);
+    }
+
+    function supportsInterface(bytes4 interfaceId) public view override(ERC721, ERC2981) returns (bool) {
+        return super.supportsInterface(interfaceId);
     }
 
     // ───────────────────────── views ─────────────────────────
@@ -170,9 +190,16 @@ contract ElyNames is ERC721, Ownable2Step {
             full,
             "</text></svg>"
         );
+        string memory attrs = string.concat(
+            '"attributes":[{"trait_type":"Length","value":',
+            Strings.toString(bytes(labelOf[tokenId]).length),
+            '},{"display_type":"date","trait_type":"Expires","value":',
+            Strings.toString(uint256(expiries[tokenId])),
+            "}]"
+        );
         string memory json = string.concat(
             '{"name":"', full, '","description":"A .ely name on Elysium","image":"data:image/svg+xml;base64,',
-            Base64.encode(bytes(svg)), '"}'
+            Base64.encode(bytes(svg)), '",', attrs, "}"
         );
         return string.concat("data:application/json;base64,", Base64.encode(bytes(json)));
     }

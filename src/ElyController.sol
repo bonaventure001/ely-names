@@ -46,6 +46,10 @@ contract ElyController is Ownable2Step, ReentrancyGuard {
 
     mapping(bytes32 => uint256) public commitments;
 
+    // Protected names (brands, staff words). The public cannot register these; only the owner can assign them.
+    mapping(bytes32 => bool) private _reserved;
+    event ReservedSet(string label, bool reserved);
+
     event NameRegistered(string label, address indexed owner, uint256 price, uint16 discountBps, uint256 duration);
     event FreeClaimed(string label, address indexed owner, uint256 indexed kaolaId);
     event NameRenewed(string label, address indexed payer, uint256 price, uint256 duration);
@@ -65,6 +69,7 @@ contract ElyController is Ownable2Step, ReentrancyGuard {
     error NotKaolaOwner();
     error KaolaAlreadyClaimed();
     error BadParam();
+    error NameReserved();
     error TransferFailed();
 
     constructor(
@@ -151,6 +156,7 @@ contract ElyController is Ownable2Step, ReentrancyGuard {
         nonReentrant
     {
         if (duration < YEAR || duration > MAX_DURATION) revert BadDuration();
+        if (isReserved(label)) revert NameReserved();
         _consume(makeCommitment(label, owner, secret));
 
         (uint256 price, uint16 bps) = registerPrice(label, duration, msg.sender);
@@ -165,6 +171,7 @@ contract ElyController is Ownable2Step, ReentrancyGuard {
     /// @notice Claim one free 1-year name with a Kaola NFT. Each Kaola id can claim exactly once, ever.
     function claimFree(string calldata label, uint256 kaolaId, bytes32 secret) external nonReentrant {
         if (!freeClaimOpen) revert FreeClaimClosed();
+        if (isReserved(label)) revert NameReserved();
         if (bytes(label).length < freeMinLength) revert NameTooShortForFreeClaim();
         if (kaola.ownerOf(kaolaId) != msg.sender) revert NotKaolaOwner();
         if (kaolaClaimed[kaolaId]) revert KaolaAlreadyClaimed();
@@ -185,6 +192,27 @@ contract ElyController is Ownable2Step, ReentrancyGuard {
         emit NameRenewed(label, msg.sender, price, duration);
 
         if (msg.value > price) _send(msg.sender, msg.value - price);
+    }
+
+    // ───────────────────────── reserved names ─────────────────────────
+
+    function isReserved(string memory label) public view returns (bool) {
+        return _reserved[keccak256(bytes(label))];
+    }
+
+    function setReserved(string[] calldata labels, bool value) external onlyOwner {
+        for (uint256 i; i < labels.length; ++i) {
+            _reserved[keccak256(bytes(labels[i]))] = value;
+            emit ReservedSet(labels[i], value);
+        }
+    }
+
+    /// @notice Owner assigns a reserved name (free) to its rightful holder, e.g. a partner's team.
+    function registerReserved(string calldata label, address to, uint256 duration) external onlyOwner nonReentrant {
+        if (!isReserved(label)) revert BadParam();
+        if (duration == 0 || duration > MAX_DURATION) revert BadDuration();
+        names.register(label, to, duration);
+        emit NameRegistered(label, to, 0, 0, duration);
     }
 
     // ───────────────────────── owner settings ─────────────────────────
