@@ -13,7 +13,9 @@
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.55 var(--body);min-height:100vh}
 main{max-width:640px;margin:0 auto;padding:20px 20px 80px}
-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0 56px}
+header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:8px 0 56px}
+.hr{display:flex;align-items:center;gap:16px}
+.xlink{color:var(--mute);font-size:14px;text-decoration:none}.xlink:hover{color:var(--mint)}
 .logo{font:800 26px var(--display);letter-spacing:-.02em}.logo span{color:var(--mint)}
 .net{font-size:13px;color:var(--mute);margin-left:10px;border:1px solid var(--line);border-radius:99px;padding:2px 10px}
 button{font:500 15px var(--body);cursor:pointer;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--ink);padding:10px 16px}
@@ -53,11 +55,12 @@ footer{margin-top:60px;color:var(--mute);font-size:13px}
 <main>
 <header>
   <div><span class="logo">.<span>ely</span></span><span class="net">Testnet</span></div>
-  <button id="connect" class="go">Connect wallet</button>
+  <div class="hr"><a class="xlink" href="https://x.com/ElysiumNames" target="_blank" rel="noopener">Follow on X</a>
+  <button id="connect" class="go">Connect wallet</button></div>
 </header>
 
 <h1>Your name on Elysium</h1>
-<p class="sub">Register a name that points to your wallet, so people can send to bona.ely instead of 0x7f3a…</p>
+<p class="sub">Register a .ely name and link it to your wallet. Use it to send and receive crypto on Elysium instead of a long 0x address.</p>
 
 <label class="search" for="q">
   <input id="q" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="yourname" maxlength="63">
