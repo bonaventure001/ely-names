@@ -14,7 +14,7 @@
 body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.55 var(--body);min-height:100vh}
 main{max-width:640px;margin:0 auto;padding:20px 20px 80px}
 header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:8px 0 56px}
-.hr{display:flex;align-items:center;gap:16px}
+.hr{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:10px 16px}
 .xlink{color:var(--mute);font-size:14px;text-decoration:none}.xlink:hover{color:var(--mint)}
 .logo{font:800 26px var(--display);letter-spacing:-.02em}.logo span{color:var(--mint)}
 .net{font-size:13px;color:var(--mute);margin-left:10px;border:1px solid var(--line);border-radius:99px;padding:2px 10px}
@@ -46,6 +46,10 @@ select,.kid{background:var(--bg);color:var(--ink);border:1px solid var(--line);b
 .nft{width:64px;height:64px;border-radius:10px;border:1px solid var(--line);flex:none}
 .nftd{flex-basis:100%;font-size:14px}.nftd summary{cursor:pointer}
 .sel{user-select:all;word-break:break-all;color:var(--ink)}
+.faq h2{font:800 22px var(--display);margin:56px 0 8px}
+.faq details{border-top:1px solid var(--line);padding:14px 0}.faq details:last-of-type{border-bottom:1px solid var(--line)}
+.faq summary{cursor:pointer;font-weight:500}
+.faq p{color:var(--mute);margin:8px 0 0;font-size:15px}.faq a,footer a{color:var(--mint)}
 #status{margin-top:20px;min-height:24px;color:var(--mute);font-size:14px;word-break:break-word}
 #status a{color:var(--mint)}
 footer{margin-top:60px;color:var(--mute);font-size:13px}
@@ -55,7 +59,9 @@ footer{margin-top:60px;color:var(--mute);font-size:13px}
 <main>
 <header>
   <div><span class="logo">.<span>ely</span></span><span class="net">Testnet</span></div>
-  <div class="hr"><a class="xlink" href="https://x.com/ElysiumNames" target="_blank" rel="noopener">Follow on X</a>
+  <div class="hr"><a class="xlink" href="#faq">FAQ</a>
+  <a class="xlink" href="https://x.com/i_am_bona" target="_blank" rel="noopener">Support</a>
+  <a class="xlink" href="https://x.com/ElysiumNames" target="_blank" rel="noopener">Follow on X</a>
   <button id="connect" class="go">Connect wallet</button></div>
 </header>
 
@@ -70,7 +76,21 @@ footer{margin-top:60px;color:var(--mute);font-size:13px}
 <div id="result"></div>
 <div id="status" role="status" aria-live="polite"></div>
 <section id="mine" class="mine"></section>
-<footer>Names last one year and can be renewed by anyone. Contracts run on Elysium testnet.</footer>
+<section id="faq" class="faq">
+  <h2>FAQ</h2>
+  <details><summary>What is a .ely name?</summary><p>A short, readable name linked to your wallet address. People can send crypto to yourname.ely instead of copying a long 0x address.</p></details>
+  <details><summary>How much does a name cost?</summary><p>The price is per year, depends on the length of the name (shorter names cost more), and is shown in HYPE before you confirm anything. Renewals are charged at the full price.</p></details>
+  <details><summary>How long does a name last?</summary><p>One year. You can renew from the Your names list at any time, and anyone can renew a name. After a name expires you have 90 days to renew it. After that, anyone can register it.</p></details>
+  <details><summary>Why are there two wallet confirmations?</summary><p>Registering takes two steps. The first reserves your choice, and the second completes the registration about 18 seconds later. This stops others from taking a name they spotted in a pending transaction.</p></details>
+  <details><summary>Is a name an NFT?</summary><p>Yes. Every name is an NFT you own. You can send it to another wallet or sell it, and ownership moves to the new holder along with a fresh set of records. Expired names cannot be transferred. A 3% royalty applies to resales on marketplaces that support royalties.</p></details>
+  <details><summary>What is a primary name?</summary><p>The name shown for your wallet. After registering, open Your names and choose Make primary.</p></details>
+  <details><summary>Who gets a free name?</summary><p>Holders of the Kaola NFT can claim one free name for one year per Kaola. Each Kaola can be used only once, even if it is sold later, and very short names may not be eligible. Partner projects may also offer a first-year discount, applied automatically when you connect a qualifying wallet.</p></details>
+  <details><summary>Why can&rsquo;t I register a certain name?</summary><p>It may already be taken, or it may be a protected word, such as a brand name. If a protected name belongs to your project, contact support.</p></details>
+  <details><summary>Is this live on mainnet?</summary><p>Not yet. The service currently runs on the Elysium testnet. Names registered here are for testing and will not carry over to mainnet.</p></details>
+  <details><summary>Which wallets work?</summary><p>Browser wallets like MetaMask, and the built-in browser inside wallet apps. On a phone, open this page from inside your wallet app.</p></details>
+  <details><summary>Something went wrong. What do I do?</summary><p>Check that your wallet is on Elysium Testnet and has enough HYPE for gas, then try again. If it still fails, <a href="https://x.com/i_am_bona" target="_blank" rel="noopener">contact support on X</a>.</p></details>
+</section>
+<footer>Names last one year and can be renewed by anyone. Contracts run on Elysium testnet. <a href="https://x.com/i_am_bona" target="_blank" rel="noopener">Support</a></footer>
 </main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
