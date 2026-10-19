@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>.ely for developers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#04181C;--panel:#082a30;--line:#14434b;--ink:#e6fbf6;--mute:#8fb5b0;--mint:#97FCE4;
+--display:'Bricolage Grotesque',system-ui,sans-serif;--body:'DM Sans',system-ui,sans-serif;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.6 var(--body)}
+main{max-width:720px;margin:0 auto;padding:20px 20px 80px}
+header{display:flex;justify-content:space-between;align-items:center;padding:8px 0 48px}
+.logo{font:800 26px var(--display);letter-spacing:-.02em;color:var(--ink);text-decoration:none}.logo span{color:var(--mint)}
+a{color:var(--mint)}header a.back{color:var(--mute);font-size:14px;text-decoration:none}
+h1{font:800 clamp(32px,6vw,48px)/1.08 var(--display);letter-spacing:-.03em;margin:0 0 14px}
+h2{font:800 22px var(--display);margin:44px 0 8px}
+p,li{color:var(--mute)}p strong,li strong{color:var(--ink);font-weight:500}
+code{font:500 14px ui-monospace,Menlo,Consolas,monospace;color:var(--mint)}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;overflow-x:auto;margin:12px 0}
+pre code{color:var(--ink);font-size:13.5px;line-height:1.55}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:8px 20px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin:12px 0}
+.kv dt{color:var(--mute)}.kv dd{margin:0;word-break:break-all}
+.try{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:12px}
+.try input{width:100%;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:12px;font:500 16px var(--body)}
+.try button{margin-top:10px;font:700 15px var(--body);background:var(--mint);color:var(--bg);border:0;border-radius:10px;padding:10px 16px;cursor:pointer}
+.try button:disabled{opacity:.5}.try input:focus-visible,.try button:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
+#out{margin-top:12px;min-height:24px;color:var(--ink);word-break:break-all}
+ul{padding-left:20px}
+</style>
+</head>
+<body>
+<main>
+<header><a class="logo" href="./">.<span>ely</span></a><a class="back" href="./">Back to the app</a></header>
+
+<h1>Add .ely names to your app</h1>
+<p>Support for .ely takes two read-only calls on one contract. There is no API key and no backend, and it works with any EVM library. Let people type <strong>bona.ely</strong> instead of a long address, and show names instead of addresses.</p>
+<p><strong>Status:</strong> live on Elysium testnet. Mainnet details will be published at launch, so keep the values below in config.</p>
+
+<h2>Network and contract</h2>
+<dl class="kv">
+  <dt>Network</dt><dd>Elysium testnet (chain ID 99801)</dd>
+  <dt>RPC</dt><dd>https://testnet-rpc.elysium.kinetiq.xyz</dd>
+  <dt>ElyNames</dt><dd>0x13A130B336400409c956dF042C128238F1486ddD (verified, <a href="https://elysium.kinetiq.xyz/testnet-explorer/address/0x13A130B336400409c956dF042C128238F1486ddD?tab=contract" target="_blank" rel="noopener">view source</a>)</dd>
+</dl>
+
+<h2>The two calls</h2>
+<ul>
+  <li><strong>Name to address:</strong> <code>resolve(string label)</code> returns the wallet address. It returns the zero address if the name is not registered or has expired.</li>
+  <li><strong>Address to name:</strong> <code>primaryNameOf(address)</code> returns the wallet's chosen name, such as <code>bona.ely</code>, or an empty string if it has none.</li>
+</ul>
+<p>Pass the label only, without <code>.ely</code>, in lowercase.</p>
+
+<h2>Example with ethers</h2>
+<pre><code>import { JsonRpcProvider, Contract } from "ethers";
+
+const provider = new JsonRpcProvider("https://testnet-rpc.elysium.kinetiq.xyz");
+const names = new Contract(
+  "0x13A130B336400409c956dF042C128238F1486ddD",
+  [
+    "function resolve(string) view returns (address)",
+    "function primaryNameOf(address) view returns (string)"
+  ],
+  provider
+);
+
+const address = await names.resolve("bona");        // 0x000... if not found
+const name = await names.primaryNameOf("0x...");    // "" if none</code></pre>
+
+<h2>Example with viem</h2>
+<pre><code>import { createPublicClient, http, parseAbi } from "viem";
+
+const client = createPublicClient({
+  transport: http("https://testnet-rpc.elysium.kinetiq.xyz"),
+});
+const abi = parseAbi([
+  "function resolve(string) view returns (address)",
+  "function primaryNameOf(address) view returns (string)",
+]);
+
+const address = await client.readContract({
+  address: "0x13A130B336400409c956dF042C128238F1486ddD",
+  abi,
+  functionName: "resolve",
+  args: ["bona"],
+});</code></pre>
+
+<h2>Handling user input</h2>
+<ul>
+  <li>Trim spaces, convert to lowercase, and remove a trailing <code>.ely</code>.</li>
+  <li>Valid labels use only <strong>a-z, 0-9 and hyphens</strong>, are 2 to 63 characters long, and cannot start or end with a hyphen. Reject anything else before calling the contract.</li>
+  <li>If <code>resolve</code> returns the zero address, show &quot;name not found&quot; and <strong>never send funds to it</strong>.</li>
+  <li>Names expire and can change hands, so resolve at the moment of sending. Do not store the address for later.</li>
+</ul>
+
+<h2>Showing names instead of addresses</h2>
+<p>Call <code>primaryNameOf</code> for each address you display, and fall back to a shortened address when it returns an empty string. For long lists, batch the calls with multicall. A wallet can only claim a name it owns, so the result is safe to display.</p>
+
+<h2>Optional: text records</h2>
+<p><code>text(string label, string key)</code> returns a text record set by the name&rsquo;s owner, such as <code>com.twitter</code>. It returns an empty string if the key isn&rsquo;t set or the name has expired.</p>
+
+<h2>Names are NFTs</h2>
+<p>Every name is a standard ERC-721 token, with ERC-2981 royalty support. For indexing, listen for <code>NameRegistered</code>, <code>NameRenewed</code>, <code>PrimaryNameSet</code> and the standard <code>Transfer</code> event.</p>
+
+<h2>Try it</h2>
+<p>Enter a name to see its address, or an address to see its primary name.</p>
+<div class="try">
+  
+  <input id="q" placeholder="bona.ely or 0x..." autocomplete="off" spellcheck="false">
+  <button id="go">Look up</button>
+  <div id="out" role="status" aria-live="polite"></div>
+</div>
+
+<h2>Questions or integrating?</h2>
+<p>Message <a href="https://x.com/i_am_bona" target="_blank" rel="noopener">support on X</a> or follow <a href="https://x.com/ElysiumNames" target="_blank" rel="noopener">@ElysiumNames</a>.</p>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+<script>
+const RPC = 'https://testnet-rpc.elysium.kinetiq.xyz';
+const NAMES = '0x13A130B336400409c956dF042C128238F1486ddD';
+const names = new ethers.Contract(NAMES, [
+  'function resolve(string) view returns (address)',
+  'function primaryNameOf(address) view returns (string)'
+], new ethers.providers.JsonRpcProvider(RPC));
+const q = document.getElementById('q'), out = document.getElementById('out'), go = document.getElementById('go');
+
+async function lookup() {
+  const v = q.value.trim().toLowerCase();
+  if (!v) return;
+  go.disabled = true; out.textContent = 'Looking up…';
+  try {
+    if (/^0x[0-9a-f]{40}$/.test(v)) {
+      const n = await names.primaryNameOf(v);
+      out.textContent = n ? v + ' is ' + n : 'No primary name is set for this address.';
+    } else {
+      const label = v.replace(/\.ely$/, '');
+      if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])$/.test(label)) { out.textContent = 'Names use a-z, 0-9 and hyphens, 2 to 63 characters.'; }
+      else {
+        const a = await names.resolve(label);
+        out.textContent = a === ethers.constants.AddressZero ? label + '.ely is not registered or has expired.' : label + '.ely points to ' + a;
+      }
+    }
+  } catch (e) { out.textContent = 'Lookup failed. Please try again.'; }
+  go.disabled = false;
+}
+go.onclick = lookup;
+q.addEventListener('keydown', e => { if (e.key === 'Enter') lookup(); });
+</script>
+</body>
+</html>
