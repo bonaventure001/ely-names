@@ -52,6 +52,13 @@ select,.kid{background:var(--bg);color:var(--ink);border:1px solid var(--line);b
 .faqwrap details{border-top:1px solid var(--line);padding:14px 0}.faqwrap details>summary{font-weight:500}
 .faq summary{cursor:pointer}
 .faq p{color:var(--mute);margin:8px 0 0;font-size:15px}.faq a,footer a{color:var(--mint)}
+.overlay{position:fixed;inset:0;background:rgba(2,12,14,.82);display:flex;justify-content:center;align-items:flex-start;overflow-y:auto;padding:24px 16px;z-index:50}
+.overlay[hidden]{display:none}
+.panel{background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:20px;width:100%;max-width:640px}
+.phead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+#paddr{word-break:break-all;font-size:14px}
+.act{padding:10px 0;border-top:1px solid var(--line);font-size:15px}.act .mute{font-size:13px}.act a{color:var(--mint)}
+.panel input.addr{width:100%;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:12px;font:500 15px var(--body);margin:10px 0}
 #status{margin-top:20px;min-height:24px;color:var(--mute);font-size:14px;word-break:break-word}
 #status a{color:var(--mint)}
 footer{margin-top:60px;color:var(--mute);font-size:13px}
@@ -64,6 +71,7 @@ footer{margin-top:60px;color:var(--mute);font-size:13px}
   <div class="hr"><a class="xlink" href="#faq">FAQ</a>
   <a class="xlink" href="https://x.com/i_am_bona" target="_blank" rel="noopener">Support</a>
   <a class="xlink" href="https://x.com/ElysiumNames" target="_blank" rel="noopener">Follow on X</a>
+  <a class="xlink" id="hdisc" href="#" hidden>Disconnect</a>
   <button id="connect" class="go">Connect wallet</button></div>
 </header>
 
@@ -77,7 +85,6 @@ footer{margin-top:60px;color:var(--mute);font-size:13px}
 
 <div id="result"></div>
 <div id="status" role="status" aria-live="polite"></div>
-<section id="mine" class="mine"></section>
 <section id="faq" class="faq">
   <details class="faqwrap" id="faqbox"><summary>FAQ</summary>
   <details><summary>What is a .ely name?</summary><p>A short, readable name linked to your wallet address. People can send crypto to yourname.ely instead of copying a long 0x address.</p></details>
@@ -95,6 +102,23 @@ footer{margin-top:60px;color:var(--mute);font-size:13px}
 </section>
 <footer>Names last one year and can be renewed by anyone. Contracts run on Elysium testnet. <a href="developers.html">Developers</a> &middot; <a href="https://x.com/i_am_bona" target="_blank" rel="noopener">Support</a></footer>
 </main>
+
+<div id="profile" class="overlay" hidden>
+  <div class="panel" role="dialog" aria-modal="true" aria-label="Your profile">
+    <div class="phead"><div><div class="name" id="pname">Your profile</div><div class="mute" id="paddr"></div></div><button id="pclose">Close</button></div>
+    <div id="pstatus" class="mute" role="status" aria-live="polite" style="margin-top:12px"></div>
+    <section id="mine" class="mine"></section>
+    <section id="activity" class="mine"></section>
+    <div class="mine"><h2>Wallet safety</h2>
+      <p>Your names belong to your wallet, so there is no separate account to change. If you are moving to a new wallet, send your names to it below. If your wallet is already compromised, an attacker may be able to move your names too, so act quickly and only from a wallet you still control.</p>
+      <details class="nftd" id="mover"><summary class="mute">Move my names to a new wallet</summary>
+        <input class="addr" id="newaddr" placeholder="New wallet address (0x...)" autocomplete="off" spellcheck="false">
+        <button id="move">Move all my names</button>
+      </details>
+    </div>
+    <div class="row" style="margin-top:24px"><button id="pcopy">Copy address</button><button id="disc">Disconnect wallet</button></div>
+  </div>
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
 <script>
@@ -114,6 +138,9 @@ const NAMES_ABI = [
   'function ownerOf(uint256) view returns (address)',
   'function primaryNameOf(address) view returns (string)',
   'function setPrimaryName(uint256)',
+  'function transferFrom(address,address,uint256)',
+  'event NameRenewed(uint256 indexed id, string label, uint64 expires)',
+  'event PrimaryNameSet(address indexed account, uint256 indexed id)',
   'function labelOf(uint256) view returns (string)',
   'function expiries(uint256) view returns (uint64)',
   'function tokenURI(uint256) view returns (string)',
@@ -143,13 +170,13 @@ const $ = id => document.getElementById(id);
 const ro = new ethers.providers.JsonRpcProvider(C.rpc);
 const names = new ethers.Contract(C.names, NAMES_ABI, ro);
 const ctrl = new ethers.Contract(C.ctrl, CTRL_ABI, ro);
-let signer = null, me = null, myPrograms = [], busy = false;
+let signer = null, me = null, myPrograms = [], myIdSet = new Set(), myRows = [], busy = false;
 const esc = x => String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const hype = wei => (+ethers.utils.formatEther(wei)).toLocaleString(undefined, { maximumFractionDigits: 4 });
 const short = a => a.slice(0, 6) + '…' + a.slice(-4);
 const tx = h => `<a href="${C.explorer}/tx/${h}" target="_blank" rel="noopener">View transaction</a> <span class="mute">(${h.slice(0, 12)}…)</span>`;
-const status = (html, bad) => { $('status').innerHTML = bad ? `<span class="bad">${html}</span>` : html; };
+const status = (html, bad) => { const h = bad ? `<span class="bad">${html}</span>` : html; $('status').innerHTML = h; $('pstatus').innerHTML = h; };
 const errText = e => (e && (e.reason || (e.error && e.error.message) || e.message) || 'Something went wrong').toString().slice(0, 160);
 
 function cleanLabel(v) {
@@ -179,7 +206,7 @@ async function connect() {
     signer = p.getSigner(); me = await signer.getAddress();
     const primary = await names.primaryNameOf(me).catch(() => '');
     $('connect').textContent = primary || short(me);
-    $('connect').classList.remove('go');
+    $('connect').classList.remove('go'); $('hdisc').hidden = false;
     status('');
     loadPrograms(); search(); loadMine();
   } catch (e) { status(errText(e), true); }
@@ -315,6 +342,7 @@ async function loadMine() {
       try { img = JSON.parse(atob(uri.split(',')[1])).image || ''; } catch (e) { /* no preview */ }
       return { id, label, exp: Number(exp), img };
     }))).filter(n => n.exp + GRACE > Date.now() / 1000).sort((a, b) => a.label.localeCompare(b.label));
+    myIdSet = new Set(rows.map(n => n.id)); myRows = rows;
     const list = rows.map(n => {
       const expired = n.exp < Date.now() / 1000;
       const isPrimary = primary === n.label + '.ely';
@@ -338,11 +366,86 @@ async function watchNft(id) {
   }
 }
 
+// ---------- profile ----------
+const openProfile = async () => {
+  if (!me) return connect();
+  $('profile').hidden = false;
+  $('paddr').textContent = me;
+  $('pclose').focus();
+  $('pname').textContent = (await names.primaryNameOf(me).catch(() => '')) || 'Your profile';
+  await loadMine();
+  loadActivity();
+};
+const closeProfile = () => { $('profile').hidden = true; };
+
+async function disconnect() {
+  try { await window.ethereum.request({ method: 'wallet_revokePermissions', params: [{ eth_accounts: {} }] }); }
+  catch (e) { /* not supported by this wallet: the site is still disconnected below */ }
+  signer = null; me = null; myPrograms = []; myIdSet = new Set(); myRows = [];
+  closeProfile();
+  $('mine').innerHTML = ''; $('activity').innerHTML = ''; $('hdisc').hidden = true;
+  $('connect').textContent = 'Connect wallet'; $('connect').classList.add('go');
+  status(''); search();
+}
+
+async function loadActivity() {
+  const box = $('activity');
+  if (!me) { box.innerHTML = ''; return; }
+  box.innerHTML = '<h2>Activity</h2><div class="mute">Loading…</div>';
+  try {
+    const [out, inc, prim, ren] = await Promise.all([
+      getLogs(names.filters.Transfer(me, null)), getLogs(names.filters.Transfer(null, me)),
+      getLogs(names.filters.PrimaryNameSet(me, null)), getLogs(names.filters.NameRenewed())
+    ]);
+    const Z = ethers.constants.AddressZero, ev = [];
+    out.forEach(l => ev.push({ l, t: l.args.to === Z ? 'lost' : 'sent', id: l.args.tokenId.toString() }));
+    inc.forEach(l => ev.push({ l, t: l.args.from === Z ? 'reg' : 'recv', id: l.args.tokenId.toString() }));
+    prim.forEach(l => ev.push({ l, t: 'prim', id: l.args.id.toString() }));
+    ren.filter(l => myIdSet.has(l.args.id.toString())).forEach(l => ev.push({ l, t: 'renew', id: l.args.id.toString() }));
+    ev.sort((a, b) => b.l.blockNumber - a.l.blockNumber || b.l.logIndex - a.l.logIndex);
+    const recent = ev.slice(0, 15);
+    const labels = { '0': '' }, when = {};
+    await Promise.all([...new Set(recent.map(e => e.id))].filter(id => id !== '0').map(async id => { labels[id] = await names.labelOf(id).catch(() => ''); }));
+    await Promise.all([...new Set(recent.map(e => e.l.blockNumber))].map(async b => { when[b] = (await ro.getBlock(b)).timestamp; }));
+    const say = e => {
+      const n = (labels[e.id] || '?') + '.ely', a = e.l.args;
+      return ({
+        reg: `Registered ${n}`, recv: `Received ${n} from ${short(a.from || '')}`, sent: `Sent ${n} to ${short(a.to || '')}`,
+        lost: `${n} expired and was registered by someone else`,
+        prim: e.id === '0' ? 'Cleared primary name' : `Set ${n} as primary name`,
+        renew: `Renewed ${n} until ${e.t === 'renew' ? fmtDate(a.expires.toNumber()) : ''}`
+      })[e.t];
+    };
+    box.innerHTML = '<h2>Activity</h2>' + (recent.length ? recent.map(e =>
+      `<div class="act">${say(e)}<div class="mute">${fmtDate(when[e.l.blockNumber])} · <a href="${C.explorer}/tx/${e.l.transactionHash}" target="_blank" rel="noopener">View transaction</a></div></div>`
+    ).join('') : '<div class="mute">No activity yet.</div>')
+      + `<p class="mute"><a style="color:var(--mint)" href="${C.explorer}/address/${me}" target="_blank" rel="noopener">See everything this wallet has done on the explorer</a></p>`;
+  } catch (e) { box.innerHTML = `<h2>Activity</h2><div class="mute bad">Could not load activity. ${errText(e)}</div>`; }
+}
+
+const moveNames = () => guard(async () => {
+  const to = $('newaddr').value.trim();
+  if (!ethers.utils.isAddress(to)) throw new Error('Enter a valid wallet address.');
+  if (to.toLowerCase() === me.toLowerCase()) throw new Error('That is already your current wallet.');
+  const movable = myRows.filter(n => n.exp > Date.now() / 1000);
+  if (!movable.length) throw new Error('You have no active names to move.');
+  if (!confirm(`Send ${movable.length} name(s) to ${to}? This cannot be undone, so double-check the address.`)) return;
+  let done = 0;
+  try {
+    for (const n of movable) {
+      status(`Moving ${done + 1} of ${movable.length}: ${n.label}.ely. Confirm in your wallet…`);
+      await (await names.connect(signer).transferFrom(me, to, n.id)).wait();
+      done++;
+    }
+  } catch (e) { throw new Error(`Moved ${done} of ${movable.length}, then stopped: ${errText(e)}`); }
+  status(`Moved ${done} name(s) to ${short(to)}. Connect that wallet and choose Make primary there.`);
+});
+
 // ---------- actions ----------
 async function guard(fn) {
   if (busy) return; busy = true;
   document.querySelectorAll('button').forEach(b => b.disabled = true);
-  try { await fn(); loadMine(); } catch (e) { status(errText(e), true); }
+  try { await fn(); await loadMine(); if (!$('profile').hidden) loadActivity(); } catch (e) { status(errText(e), true); }
   busy = false;
   document.querySelectorAll('button').forEach(b => b.disabled = false);
 }
@@ -387,7 +490,14 @@ const setPrimary = label => guard(async () => {
 });
 
 // ---------- wire up ----------
-$('connect').onclick = connect;
+$('connect').onclick = () => (me ? openProfile() : connect());
+$('hdisc').onclick = e => { e.preventDefault(); disconnect(); };
+$('disc').onclick = disconnect;
+$('move').onclick = moveNames;
+$('pclose').onclick = closeProfile;
+$('pcopy').onclick = () => navigator.clipboard.writeText(me).then(() => status('Address copied.'), () => status('Could not copy. Select the address above and copy it.', true));
+$('profile').addEventListener('click', e => { if (e.target === $('profile')) closeProfile(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeProfile(); });
 const openFaq = () => { $('faqbox').open = true; };
 document.querySelectorAll('a[href="#faq"]').forEach(a => a.addEventListener('click', openFaq));
 if (location.hash === '#faq') openFaq();
