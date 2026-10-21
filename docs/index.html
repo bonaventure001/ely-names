@@ -86,7 +86,7 @@ footer{margin-top:60px;color:var(--mute);font-size:13px}
   <details><summary>Why are there two wallet confirmations?</summary><p>Registering takes two steps. The first reserves your choice, and the second completes the registration about 18 seconds later. This stops others from taking a name they spotted in a pending transaction.</p></details>
   <details><summary>Is a name an NFT?</summary><p>Yes. Every name is an NFT you own. You can send it to another wallet or sell it, and ownership moves to the new holder along with a fresh set of records. Expired names cannot be transferred. A 3% royalty applies to resales on marketplaces that support royalties.</p></details>
   <details><summary>What is a primary name?</summary><p>The name shown for your wallet. After registering, open Your names and choose Make primary.</p></details>
-  <details><summary>Who gets a free name?</summary><p>Holders of the Kaola NFT can claim one free name for one year per Kaola. Each Kaola can be used only once, even if it is sold later, and very short names may not be eligible. Partner projects may also offer a first-year discount, applied automatically when you connect a qualifying wallet.</p></details>
+  <details><summary>Who gets a free or discounted name?</summary><p>Partner projects can offer their communities a free or discounted first year. Holders of the Kaola NFT at the announced snapshot can claim one free name per Kaola, and other partners, such as an NFT project or a DeFi platform, can reward their holders or most active users. Eligibility comes from a public list published with each offer, and each entry can be used once. If your wallet is on a list, the offer is applied automatically when you connect it.</p></details>
   <details><summary>Why can&rsquo;t I register a certain name?</summary><p>It may already be taken, or it may be a protected word, such as a brand name. If a protected name belongs to your project, contact support.</p></details>
   <details><summary>Is this live on mainnet?</summary><p>Not yet. The service currently runs on the Elysium testnet. Names registered here are for testing and will not carry over to mainnet.</p></details>
   <details><summary>Which wallets work?</summary><p>Browser wallets like MetaMask, and the built-in browser inside wallet apps. On a phone, open this page from inside your wallet app.</p></details>
@@ -102,7 +102,7 @@ const C = {
   chainId: 99801, chainHex: '0x185d9', rpc: 'https://testnet-rpc.elysium.kinetiq.xyz',
   explorer: 'https://elysium.kinetiq.xyz/testnet-explorer',
   names: '0x13A130B336400409c956dF042C128238F1486ddD',
-  ctrl: '0x1dA6a196405dCc455195eb00B4F7D17106164e0A',
+  ctrl: '0xA434b4D98dc9e35205bf186B1750ed2961791F2d',
   kaola: '0xE99D7A5CB301f023849888D5F34a43bB7f39D841',
   fromBlock: 10325100 // just before the names contract was deployed
 };
@@ -125,11 +125,12 @@ const CTRL_ABI = [
   'function makeCommitment(string,address,bytes32) pure returns (bytes32)',
   'function commit(bytes32)',
   'function register(string,address,uint256,bytes32) payable',
-  'function claimFree(string,uint256,bytes32)',
   'function renew(string,uint256) payable',
-  'function kaolaClaimed(uint256) view returns (bool)',
-  'function freeClaimOpen() view returns (bool)',
-  'function freeMinLength() view returns (uint256)',
+  'function programCount() view returns (uint256)',
+  'function getProgram(uint256) view returns (tuple(bytes32 root, address manager, uint16 discountBps, uint64 start, uint64 end, uint64 snapshotAt, uint32 cap, uint32 used, uint8 minLength, bool active, bool checkLegacyKaola, string name, string listURI))',
+  'function checkClaim(uint256,address,uint256,bytes32[]) view returns (uint8)',
+  'function programPrice(string,uint256,uint256,address) view returns (uint256,uint16)',
+  'function registerWithProgram(string,address,uint256,bytes32,uint256,uint256,bytes32[]) payable',
   'function isReserved(string) view returns (bool)'
 ];
 const NFT_ABI = [
@@ -142,8 +143,8 @@ const $ = id => document.getElementById(id);
 const ro = new ethers.providers.JsonRpcProvider(C.rpc);
 const names = new ethers.Contract(C.names, NAMES_ABI, ro);
 const ctrl = new ethers.Contract(C.ctrl, CTRL_ABI, ro);
-const kaola = new ethers.Contract(C.kaola, NFT_ABI, ro);
-let signer = null, me = null, kaolaIds = [], pickedId = '', timer = null, busy = false;
+let signer = null, me = null, myPrograms = [], busy = false;
+const esc = x => String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const hype = wei => (+ethers.utils.formatEther(wei)).toLocaleString(undefined, { maximumFractionDigits: 4 });
 const short = a => a.slice(0, 6) + '…' + a.slice(-4);
@@ -180,18 +181,37 @@ async function connect() {
     $('connect').textContent = primary || short(me);
     $('connect').classList.remove('go');
     status('');
-    loadKaola(); search(); loadMine();
+    loadPrograms(); search(); loadMine();
   } catch (e) { status(errText(e), true); }
 }
 if (window.ethereum) window.ethereum.on && window.ethereum.on('accountsChanged', () => location.reload());
 
-async function loadKaola() {
-  kaolaIds = [];
+// Partner and snapshot programs: the published list for each open program is fetched from this site
+// (lists/<id>.json) and checked against the on-chain root, so only a matching list is ever used.
+async function loadPrograms() {
+  myPrograms = [];
+  if (!me) return;
   try {
-    const n = Math.min((await kaola.balanceOf(me)).toNumber(), 30);
-    const ids = await Promise.all([...Array(n).keys()].map(i => kaola.tokenOfOwnerByIndex(me, i)));
-    for (const id of ids) kaolaIds.push({ id: id.toString(), claimed: await ctrl.kaolaClaimed(id) });
-  } catch (e) { /* collection may not list tokens; manual entry still works */ }
+    const count = (await ctrl.programCount()).toNumber();
+    const now = Date.now() / 1000;
+    for (let id = 1; id <= Math.min(count, 25); id++) {
+      const p = await ctrl.getProgram(id);
+      if (!p.active || now < p.start.toNumber() || (p.end.toNumber() && now > p.end.toNumber())) continue;
+      let list;
+      try {
+        const r = await fetch('lists/' + id + '.json', { cache: 'no-store' });
+        if (!r.ok) continue;
+        list = await r.json();
+      } catch (e) { continue; }
+      if (!list || String(list.root).toLowerCase() !== p.root.toLowerCase()) continue;
+      for (const en of list.entries.filter(x => x.address.toLowerCase() === me.toLowerCase())) {
+        if ((await ctrl.checkClaim(id, me, en.entryId, en.proof)) === 0) {
+          myPrograms.push({ id, name: p.name, bps: p.discountBps, minLength: p.minLength, entryId: en.entryId, proof: en.proof });
+          break;
+        }
+      }
+    }
+  } catch (e) { /* programs unavailable: normal registration still works */ }
   search();
 }
 
@@ -222,10 +242,19 @@ async function renderAvailable(label) {
     return;
   }
   const years = +(document.getElementById('yrs') || { value: 1 }).value || 1;
-  const [price, bps] = await ctrl.registerPrice(label, YEAR * years, me || ethers.constants.AddressZero);
-  const [open, minLen] = await Promise.all([ctrl.freeClaimOpen(), ctrl.freeMinLength()]);
-  const canFree = open && label.length >= minLen.toNumber();
-  const disc = bps > 0 ? `<div class="mute">${bps / 100}% partner discount applied to your first year.</div>` : '';
+  const dur = YEAR * years;
+  let [price, bps] = await ctrl.registerPrice(label, dur, me || ethers.constants.AddressZero);
+  let prog = null;
+  for (const pr of myPrograms) {
+    if (label.length < pr.minLength) continue;
+    const [pp, pb] = await ctrl.programPrice(label, dur, pr.id, me);
+    if (pp.lt(price)) { price = pp; bps = pb; prog = pr; }
+  }
+  const tooShort = !prog && myPrograms.find(pr => label.length < pr.minLength);
+  const offer = pr => (pr.bps >= 10000 ? 'free first year' : (pr.bps / 100) + '% off your first year');
+  const disc = prog ? `<div class="mute">${esc(prog.name)}: ${offer(prog)}. You are on the published list.</div>`
+    : bps > 0 ? `<div class="mute">${bps / 100}% partner discount applied to your first year.</div>`
+    : tooShort ? `<div class="mute">${esc(tooShort.name)} (${offer(tooShort)}) needs names of ${tooShort.minLength} or more characters.</div>` : '';
   out.innerHTML = `
   <div class="card">
     <div class="row"><div><div class="name">${label}.ely</div><div class="mute">Available</div></div>
@@ -233,28 +262,11 @@ async function renderAvailable(label) {
     ${disc}
     <div class="row" style="margin-top:16px">
       <label class="mute">Length <select id="yrs">${[1, 2, 3, 5].map(y => `<option value="${y}" ${y === years ? 'selected' : ''}>${y} year${y > 1 ? 's' : ''}</option>`).join('')}</select></label>
-      <button class="go" id="buy">${me ? 'Register ' + label + '.ely' : 'Connect wallet to register'}</button>
+      <button class="go" id="buy">${me ? (prog && price.isZero() ? 'Claim ' : 'Register ') + label + '.ely' : 'Connect wallet to register'}</button>
     </div>
-    ${canFree ? freeBlock(label, minLen.toNumber()) : (open ? `<div class="mute free">Free Kaola claims need names of ${minLen} characters or more.</div>` : '')}
   </div>`;
   $('yrs').onchange = () => renderAvailable(label);
-  $('buy').onclick = () => me ? register(label, +$('yrs').value) : connect();
-  if ($('claim')) {
-    $('claim').onclick = () => me ? claim(label) : connect();
-    $('kid').oninput = e => { pickedId = e.target.value; };
-    document.querySelectorAll('.chip').forEach(b => b.onclick = () => {
-      pickedId = b.dataset.id; $('kid').value = pickedId;
-      document.querySelectorAll('.chip').forEach(x => x.setAttribute('aria-pressed', x === b));
-    });
-  }
-}
-function freeBlock() {
-  const chips = kaolaIds.map(k => `<button class="chip" data-id="${k.id}" aria-pressed="${k.id === pickedId}" ${k.claimed ? 'disabled title="Already used"' : ''}>Kaola #${k.id}${k.claimed ? ' (used)' : ''}</button>`).join('');
-  return `<div class="free"><div class="name" style="font-size:18px">Free for one year with a Kaola</div>
-    <div class="mute">Each Kaola can claim one name, once.</div>
-    ${chips ? `<div class="chips">${chips}</div>` : ''}
-    <div class="row"><label class="mute">Kaola ID <input class="kid" id="kid" inputmode="numeric" value="${pickedId}"></label>
-    <button class="go" id="claim">${me ? 'Claim free' : 'Connect wallet to claim'}</button></div></div>`;
+  $('buy').onclick = () => me ? register(label, +$('yrs').value, prog) : connect();
 }
 
 function renderTaken(label, owner, exp) {
@@ -344,26 +356,22 @@ async function commitAndWait(label) {
   for (let s = 18; s > 0; s--) { status(`Reserved. Registering in ${s}s (this stops others grabbing your name first)…`); await new Promise(r => setTimeout(r, 1000)); }
   return secret;
 }
-const register = (label, years) => guard(async () => {
+const register = (label, years, prog) => guard(async () => {
   const secret = await commitAndWait(label);
-  const [price] = await ctrl.registerPrice(label, YEAR * years, me);
-  status('Step 2 of 2: confirm registration in your wallet…');
-  const t = await wctrl().register(label, me, YEAR * years, secret, { value: price });
+  const dur = YEAR * years;
+  let t;
+  if (prog) {
+    const [price] = await ctrl.programPrice(label, dur, prog.id, me);
+    status('Step 2 of 2: confirm in your wallet…');
+    t = await wctrl().registerWithProgram(label, me, dur, secret, prog.id, prog.entryId, prog.proof, { value: price });
+  } else {
+    const [price] = await ctrl.registerPrice(label, dur, me);
+    status('Step 2 of 2: confirm registration in your wallet…');
+    t = await wctrl().register(label, me, dur, secret, { value: price });
+  }
   status('Registering…'); await t.wait();
   status(`${label}.ely is yours. ${tx(t.hash)}`);
-  search();
-});
-const claim = label => guard(async () => {
-  const id = pickedId.trim();
-  if (!/^\d+$/.test(id)) throw new Error('Enter your Kaola ID first.');
-  if ((await kaola.ownerOf(id)).toLowerCase() !== me.toLowerCase()) throw new Error('That Kaola is not in this wallet.');
-  if (await ctrl.kaolaClaimed(id)) throw new Error('That Kaola has already claimed its free name.');
-  const secret = await commitAndWait(label);
-  status('Step 2 of 2: confirm your free claim in your wallet…');
-  const t = await wctrl().claimFree(label, id, secret);
-  status('Claiming…'); await t.wait();
-  status(`${label}.ely is yours for one year. ${tx(t.hash)}`);
-  loadKaola();
+  loadPrograms();
 });
 const renew = label => guard(async () => {
   const p = await ctrl.renewPrice(label, YEAR);
