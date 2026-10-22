@@ -59,6 +59,8 @@ select,.kid{background:var(--bg);color:var(--ink);border:1px solid var(--line);b
 #paddr{word-break:break-all;font-size:14px}
 .act{padding:10px 0;border-top:1px solid var(--line);font-size:15px}.act .mute{font-size:13px}.act a{color:var(--mint)}
 .panel input.addr{width:100%;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:12px;font:500 15px var(--body);margin:10px 0}
+.wopt{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:12px 14px;margin-top:8px;border-radius:12px}
+.wopt img{width:32px;height:32px;border-radius:8px;flex:none}.wopt small{margin-left:auto;color:var(--mute)}
 #status{margin-top:20px;min-height:24px;color:var(--mute);font-size:14px;word-break:break-word}
 #status a{color:var(--mint)}
 footer{margin-top:60px;color:var(--mute);font-size:13px}
@@ -102,6 +104,14 @@ footer{margin-top:60px;color:var(--mute);font-size:13px}
 </section>
 <footer>Names last one year and can be renewed by anyone. Contracts run on Elysium testnet. <a href="developers.html">Developers</a> &middot; <a href="https://x.com/i_am_bona" target="_blank" rel="noopener">Support</a></footer>
 </main>
+
+<div id="picker" class="overlay" hidden>
+  <div class="panel" role="dialog" aria-modal="true" aria-label="Connect wallet">
+    <div class="phead"><div class="name">Connect wallet</div><button id="xpick">Close</button></div>
+    <p class="mute">Choose your wallet to continue.</p>
+    <div id="wlist"></div>
+  </div>
+</div>
 
 <div id="profile" class="overlay" hidden>
   <div class="panel" role="dialog" aria-modal="true" aria-label="Your profile">
@@ -170,7 +180,7 @@ const $ = id => document.getElementById(id);
 const ro = new ethers.providers.JsonRpcProvider(C.rpc);
 const names = new ethers.Contract(C.names, NAMES_ABI, ro);
 const ctrl = new ethers.Contract(C.ctrl, CTRL_ABI, ro);
-let signer = null, me = null, myPrograms = [], myIdSet = new Set(), myRows = [], busy = false;
+let eth = null, signer = null, me = null, myPrograms = [], myIdSet = new Set(), myRows = [], busy = false;
 const esc = x => String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const hype = wei => (+ethers.utils.formatEther(wei)).toLocaleString(undefined, { maximumFractionDigits: 4 });
@@ -192,32 +202,78 @@ function labelProblem(l) {
 
 // ---------- wallet ----------
 async function ensureChain() {
-  const current = await window.ethereum.request({ method: 'eth_chainId' });
+  const current = await eth.request({ method: 'eth_chainId' });
   if (String(current).toLowerCase() === C.chainHex) return;
   try {
-    await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: C.chainHex }] });
+    await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: C.chainHex }] });
   } catch (e) {
-    await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [{
+    await eth.request({ method: 'wallet_addEthereumChain', params: [{
       chainId: C.chainHex, chainName: 'Elysium Testnet', rpcUrls: [C.rpc],
       nativeCurrency: { name: 'HYPE', symbol: 'HYPE', decimals: 18 }, blockExplorerUrls: [C.explorer] }] });
   }
 }
 
-async function connect() {
-  if (!window.ethereum) return status('No wallet found. Install MetaMask or open this site in your wallet\'s browser.', true);
+// Wallet list: every wallet that announces itself (EIP-6963) is shown, and the list appears on every connect.
+// Set WC_PROJECT_ID (free at cloud.reown.com) to also offer WalletConnect, for QR codes and mobile wallet apps.
+const WC_PROJECT_ID = '';
+const announced = new Map();
+window.addEventListener('eip6963:announceProvider', e => {
+  if (e.detail && e.detail.info && e.detail.provider) { announced.set(e.detail.info.uuid, e.detail); if (!$('picker').hidden) renderWallets(); }
+});
+const askWallets = () => window.dispatchEvent(new Event('eip6963:requestProvider'));
+askWallets();
+
+function renderWallets() {
+  const list = $('wlist'); list.innerHTML = '';
+  const add = (icon, label, sub, fn) => {
+    const b = document.createElement('button'); b.className = 'wopt';
+    if (icon) { const i = document.createElement('img'); i.src = icon; i.alt = ''; b.appendChild(i); }
+    const t = document.createElement('span'); t.textContent = label; b.appendChild(t);
+    const m = document.createElement('small'); m.textContent = sub; b.appendChild(m);
+    b.onclick = fn; list.appendChild(b);
+  };
+  for (const w of announced.values()) add(w.info.icon, w.info.name, 'Detected in this browser', () => connectWith(w.provider));
+  if (!announced.size && window.ethereum) add('', 'Browser wallet', 'Detected in this browser', () => connectWith(window.ethereum));
+  if (WC_PROJECT_ID) add('', 'WalletConnect', 'Scan a QR code or open a wallet app', connectWalletConnect);
+  if (!list.children.length) {
+    const p = document.createElement('p'); p.className = 'mute';
+    p.textContent = 'No wallet detected in this browser. Install a wallet extension such as MetaMask, or open this page inside your wallet app\u2019s browser.';
+    list.appendChild(p);
+  }
+}
+const closePicker = () => { $('picker').hidden = true; };
+function connect() { askWallets(); renderWallets(); $('picker').hidden = false; }
+
+async function connectWalletConnect() {
+  closePicker();
   try {
-    await window.ethereum.request({ method: 'eth_requestAccounts' });
+    status('Opening WalletConnect…');
+    const { EthereumProvider } = await import('https://esm.sh/@walletconnect/ethereum-provider@2.25.0');
+    const p = await EthereumProvider.init({
+      projectId: WC_PROJECT_ID, optionalChains: [C.chainId], rpcMap: { [C.chainId]: C.rpc }, showQrModal: true,
+      metadata: { name: '.ely Name Service', description: 'Register .ely names on Elysium', url: location.origin, icons: [] }
+    });
+    await p.connect(); // shows the QR code; resolves when a wallet approves
+    await connectWith(p);
+  } catch (e) { status('WalletConnect could not connect (' + errText(e) + ').', true); }
+}
+
+async function connectWith(provider) {
+  closePicker();
+  eth = provider;
+  try {
+    await eth.request({ method: 'eth_requestAccounts' });
     await ensureChain();
-    const p = new ethers.providers.Web3Provider(window.ethereum, 'any');
+    const p = new ethers.providers.Web3Provider(eth, 'any');
     signer = p.getSigner(); me = await signer.getAddress();
     const primary = await names.primaryNameOf(me).catch(() => '');
     $('connect').textContent = primary || short(me);
     $('connect').classList.remove('go'); $('hdisc').hidden = false;
     status('');
+    if (eth.on) eth.on('accountsChanged', () => location.reload());
     loadPrograms(); search(); loadMine();
-  } catch (e) { status(errText(e), true); }
+  } catch (e) { eth = null; signer = null; me = null; status(errText(e), true); }
 }
-if (window.ethereum) window.ethereum.on && window.ethereum.on('accountsChanged', () => location.reload());
 
 // Partner and snapshot programs: the published list for each open program is fetched from this site
 // (lists/<id>.json) and checked against the on-chain root, so only a matching list is ever used.
@@ -372,11 +428,11 @@ async function watchNft(id, label, btn) {
     await ensureChain(); // the wallet must be on Elysium testnet, or it checks ownership on the wrong network
     const owner = await names.ownerOf(id).catch(() => null);
     if (!owner || owner.toLowerCase() !== me.toLowerCase()) throw new Error('The wallet you are connected with does not currently own this name.');
-    const ok = await window.ethereum.request({ method: 'wallet_watchAsset', params: { type: 'ERC721', options: { address: C.names, tokenId: id } } });
+    const ok = await eth.request({ method: 'wallet_watchAsset', params: { type: 'ERC721', options: { address: C.names, tokenId: id } } });
     if (!ok) throw new Error('your wallet declined the request');
     status(label + '.ely was sent to your wallet. If it does not show up in the NFTs tab, refresh that tab or switch network and back.');
   } catch (e) {
-    status('Your wallet could not add it automatically (' + errText(e) + '). Use the details below to add it by hand.', true);
+    status('Your wallet could not add it automatically (' + errText(e) + '). Some wallets cannot import NFTs on newer networks. You can add it by hand with the details below.', true);
     const d = btn && btn.closest('.nrow') && btn.closest('.nrow').querySelector('details');
     if (d) d.open = true;
   }
@@ -395,9 +451,9 @@ const openProfile = async () => {
 const closeProfile = () => { $('profile').hidden = true; };
 
 async function disconnect() {
-  try { await window.ethereum.request({ method: 'wallet_revokePermissions', params: [{ eth_accounts: {} }] }); }
+  try { if (eth && eth.disconnect) await eth.disconnect(); else if (eth) await eth.request({ method: 'wallet_revokePermissions', params: [{ eth_accounts: {} }] }); }
   catch (e) { /* not supported by this wallet: the site is still disconnected below */ }
-  signer = null; me = null; myPrograms = []; myIdSet = new Set(); myRows = [];
+  eth = null; signer = null; me = null; myPrograms = []; myIdSet = new Set(); myRows = [];
   closeProfile();
   $('mine').innerHTML = ''; $('activity').innerHTML = ''; $('hdisc').hidden = true;
   $('connect').textContent = 'Connect wallet'; $('connect').classList.add('go');
@@ -513,7 +569,9 @@ $('move').onclick = moveNames;
 $('pclose').onclick = closeProfile;
 $('pcopy').onclick = () => navigator.clipboard.writeText(me).then(() => status('Address copied.'), () => status('Could not copy. Select the address above and copy it.', true));
 $('profile').addEventListener('click', e => { if (e.target === $('profile')) closeProfile(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeProfile(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeProfile(); closePicker(); } });
+$('xpick').onclick = closePicker;
+$('picker').addEventListener('click', e => { if (e.target === $('picker')) closePicker(); });
 const openFaq = () => { $('faqbox').open = true; };
 document.querySelectorAll('a[href="#faq"]').forEach(a => a.addEventListener('click', openFaq));
 if (location.hash === '#faq') openFaq();
