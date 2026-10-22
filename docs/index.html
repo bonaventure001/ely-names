@@ -186,7 +186,17 @@ const esc = x => String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;'
 const hype = wei => (+ethers.utils.formatEther(wei)).toLocaleString(undefined, { maximumFractionDigits: 4 });
 const short = a => a.slice(0, 6) + '…' + a.slice(-4);
 const tx = h => `<a href="${C.explorer}/tx/${h}" target="_blank" rel="noopener">View transaction</a> <span class="mute">(${h.slice(0, 12)}…)</span>`;
-const status = (html, bad) => { const h = bad ? `<span class="bad">${html}</span>` : html; $('status').innerHTML = h; $('pstatus').innerHTML = h; };
+let statusTimer = null;
+const status = (html, bad) => {
+  const h = bad ? `<span class="bad">${html}</span>` : html;
+  $('status').innerHTML = h; $('pstatus').innerHTML = h;
+  clearTimeout(statusTimer);
+  // errors fade after 7 seconds, other results after 25; "working…" messages stay until something replaces them
+  if (html && !/…$/.test(String(html).replace(/<[^>]*>/g, '').trim())) {
+    statusTimer = setTimeout(() => { $('status').innerHTML = ''; $('pstatus').innerHTML = ''; }, bad ? 7000 : 25000);
+  }
+};
+const isRejected = e => !!e && (e.code === 4001 || e.code === 'ACTION_REJECTED' || /reject|denied|cancel/i.test(String(e.message || e.reason || '')));
 const errText = e => (e && (e.reason || (e.error && e.error.message) || e.message) || 'Something went wrong').toString().slice(0, 160);
 
 function cleanLabel(v) {
@@ -272,7 +282,7 @@ async function connectWith(provider) {
     status('');
     if (eth.on) eth.on('accountsChanged', () => location.reload());
     loadPrograms(); search(); loadMine();
-  } catch (e) { eth = null; signer = null; me = null; status(errText(e), true); }
+  } catch (e) { eth = null; signer = null; me = null; status(isRejected(e) ? 'Connection cancelled.' : errText(e), true); }
 }
 
 // Partner and snapshot programs: the published list for each open program is fetched from this site
@@ -432,6 +442,7 @@ async function watchNft(id, label, btn) {
     if (!ok) throw new Error('your wallet declined the request');
     status(label + '.ely was sent to your wallet. If it does not show up in the NFTs tab, refresh that tab or switch network and back.');
   } catch (e) {
+    if (isRejected(e)) { status('Cancelled in your wallet. Tap Add NFT to wallet again and approve the request to add it.', true); return; }
     status('Your wallet could not add it automatically (' + errText(e) + '). Some wallets cannot import NFTs on newer networks. You can add it by hand with the details below.', true);
     const d = btn && btn.closest('.nrow') && btn.closest('.nrow').querySelector('details');
     if (d) d.open = true;
@@ -517,7 +528,7 @@ const moveNames = () => guard(async () => {
 async function guard(fn) {
   if (busy) return; busy = true;
   document.querySelectorAll('button').forEach(b => b.disabled = true);
-  try { await ensureChain(); await fn(); await loadMine(); if (!$('profile').hidden) loadActivity(); } catch (e) { status(errText(e), true); }
+  try { await ensureChain(); await fn(); await loadMine(); if (!$('profile').hidden) loadActivity(); } catch (e) { status(isRejected(e) ? 'Cancelled in your wallet.' : errText(e), true); }
   busy = false;
   document.querySelectorAll('button').forEach(b => b.disabled = false);
 }
