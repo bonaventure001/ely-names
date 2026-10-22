@@ -191,18 +191,24 @@ function labelProblem(l) {
 }
 
 // ---------- wallet ----------
+async function ensureChain() {
+  const current = await window.ethereum.request({ method: 'eth_chainId' });
+  if (String(current).toLowerCase() === C.chainHex) return;
+  try {
+    await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: C.chainHex }] });
+  } catch (e) {
+    await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [{
+      chainId: C.chainHex, chainName: 'Elysium Testnet', rpcUrls: [C.rpc],
+      nativeCurrency: { name: 'HYPE', symbol: 'HYPE', decimals: 18 }, blockExplorerUrls: [C.explorer] }] });
+  }
+}
+
 async function connect() {
   if (!window.ethereum) return status('No wallet found. Install MetaMask or open this site in your wallet\'s browser.', true);
   try {
     await window.ethereum.request({ method: 'eth_requestAccounts' });
-    try {
-      await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: C.chainHex }] });
-    } catch (e) {
-      await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [{
-        chainId: C.chainHex, chainName: 'Elysium Testnet', rpcUrls: [C.rpc],
-        nativeCurrency: { name: 'HYPE', symbol: 'HYPE', decimals: 18 }, blockExplorerUrls: [C.explorer] }] });
-    }
-    const p = new ethers.providers.Web3Provider(window.ethereum);
+    await ensureChain();
+    const p = new ethers.providers.Web3Provider(window.ethereum, 'any');
     signer = p.getSigner(); me = await signer.getAddress();
     const primary = await names.primaryNameOf(me).catch(() => '');
     $('connect').textContent = primary || short(me);
@@ -348,21 +354,31 @@ async function loadMine() {
       const isPrimary = primary === n.label + '.ely';
       return `<div class="nrow"><div class="who">${n.img ? `<img class="nft" src="${n.img}" alt="${n.label}.ely NFT">` : ''}<div><span class="name" style="font-size:20px">${n.label}.ely</span>${isPrimary ? '<span class="badge">Primary</span>' : ''}
         <div class="mute ${expired ? 'bad' : ''}">${expired ? 'Expired. Renew by ' + fmtDate(n.exp + GRACE) : 'Expires ' + fmtDate(n.exp)}</div></div></div>
-        <div class="btns"><button data-renew="${n.label}">Renew 1 year</button>${isPrimary ? '' : `<button data-prim="${n.label}">Make primary</button>`}<button data-nft="${n.id}">Add NFT to wallet</button></div>
-        <details class="nftd"><summary class="mute">NFT details</summary><div class="mute">Contract: <span class="sel">${C.names}</span><br>Token ID: <span class="sel">${n.id}</span></div></details></div>`;
+        <div class="btns"><button data-renew="${n.label}">Renew 1 year</button>${isPrimary ? '' : `<button data-prim="${n.label}">Make primary</button>`}<button data-nft="${n.id}" data-label="${n.label}">Add NFT to wallet</button></div>
+        <details class="nftd"><summary class="mute">NFT details</summary><div class="mute">Contract: <span class="sel">${C.names}</span><br>Token ID: <span class="sel">${n.id}</span></div>
+        <div class="btns" style="margin:8px 0"><button data-copy="${C.names}">Copy contract</button><button data-copy="${n.id}">Copy token ID</button></div>
+        <div class="mute">To add it by hand: open your wallet, go to the NFTs tab, choose Import NFT, then paste the contract and token ID.</div></details></div>`;
     }).join('');
     box.innerHTML = '<h2>Your names</h2>' + (list || '<div class="mute">No names in this wallet yet. Search one above.</div>');
     box.querySelectorAll('[data-renew]').forEach(b => b.onclick = () => renew(b.dataset.renew));
     box.querySelectorAll('[data-prim]').forEach(b => b.onclick = () => setPrimary(b.dataset.prim));
-    box.querySelectorAll('[data-nft]').forEach(b => b.onclick = () => watchNft(b.dataset.nft));
+    box.querySelectorAll('[data-nft]').forEach(b => b.onclick = () => watchNft(b.dataset.nft, b.dataset.label, b));
+    box.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => navigator.clipboard.writeText(b.dataset.copy).then(() => status('Copied.'), () => status('Could not copy. Select the text and copy it.', true)));
   } catch (e) { box.innerHTML = `<div class="mute bad">Could not load your names. ${errText(e)}</div>`; }
 }
 
-async function watchNft(id) {
+async function watchNft(id, label, btn) {
   try {
-    await window.ethereum.request({ method: 'wallet_watchAsset', params: { type: 'ERC721', options: { address: C.names, tokenId: id } } });
+    await ensureChain(); // the wallet must be on Elysium testnet, or it checks ownership on the wrong network
+    const owner = await names.ownerOf(id).catch(() => null);
+    if (!owner || owner.toLowerCase() !== me.toLowerCase()) throw new Error('The wallet you are connected with does not currently own this name.');
+    const ok = await window.ethereum.request({ method: 'wallet_watchAsset', params: { type: 'ERC721', options: { address: C.names, tokenId: id } } });
+    if (!ok) throw new Error('your wallet declined the request');
+    status(label + '.ely was sent to your wallet. If it does not show up in the NFTs tab, refresh that tab or switch network and back.');
   } catch (e) {
-    status('Your wallet could not add it automatically. In the wallet, open the NFTs tab, choose Import NFT, and paste the contract and token ID from "NFT details".', true);
+    status('Your wallet could not add it automatically (' + errText(e) + '). Use the details below to add it by hand.', true);
+    const d = btn && btn.closest('.nrow') && btn.closest('.nrow').querySelector('details');
+    if (d) d.open = true;
   }
 }
 
@@ -445,7 +461,7 @@ const moveNames = () => guard(async () => {
 async function guard(fn) {
   if (busy) return; busy = true;
   document.querySelectorAll('button').forEach(b => b.disabled = true);
-  try { await fn(); await loadMine(); if (!$('profile').hidden) loadActivity(); } catch (e) { status(errText(e), true); }
+  try { await ensureChain(); await fn(); await loadMine(); if (!$('profile').hidden) loadActivity(); } catch (e) { status(errText(e), true); }
   busy = false;
   document.querySelectorAll('button').forEach(b => b.disabled = false);
 }
