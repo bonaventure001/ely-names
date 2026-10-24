@@ -130,6 +130,19 @@ footer{margin-top:60px;color:var(--mute);font-size:13px}
   </div>
 </div>
 
+<div id="sharebox" class="overlay" hidden>
+  <div class="panel" role="dialog" aria-modal="true" aria-label="Share your name">
+    <div class="phead"><div class="name" id="stitle">Share your name</div><button id="sclose">Close</button></div>
+    <canvas id="scard" width="1200" height="630" style="width:100%;height:auto;border-radius:12px;margin-top:14px;border:1px solid var(--line)"></canvas>
+    <div class="row" style="margin-top:14px;justify-content:flex-start;gap:8px">
+      <button id="sdl">Download image</button>
+      <button id="sx" class="go">Share on X</button>
+      <button id="sshare" hidden>Share image</button>
+    </div>
+    <p class="mute" style="font-size:14px;margin:12px 0 0">Posting on X? Download the image first, then attach it to your post.</p>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
 <script>
 const C = {
@@ -420,7 +433,7 @@ async function loadMine() {
       const isPrimary = primary === n.label + '.ely';
       return `<div class="nrow"><div class="who">${n.img ? `<img class="nft" src="${n.img}" alt="${n.label}.ely NFT">` : ''}<div><span class="name" style="font-size:20px">${n.label}.ely</span>${isPrimary ? '<span class="badge">Primary</span>' : ''}
         <div class="mute ${expired ? 'bad' : ''}">${expired ? 'Expired. Renew by ' + fmtDate(n.exp + GRACE) : 'Expires ' + fmtDate(n.exp)}</div></div></div>
-        <div class="btns"><button data-renew="${n.label}">Renew 1 year</button>${isPrimary ? '' : `<button data-prim="${n.label}">Make primary</button>`}<button data-nft="${n.id}" data-label="${n.label}">Add NFT to wallet</button></div>
+        <div class="btns"><button data-renew="${n.label}">Renew 1 year</button>${isPrimary ? '' : `<button data-prim="${n.label}">Make primary</button>`}<button data-share="${n.label}" data-exp="${n.exp}">Share</button><button data-nft="${n.id}" data-label="${n.label}">Add NFT to wallet</button></div>
         <details class="nftd"><summary class="mute">NFT details</summary><div class="mute">Contract: <span class="sel">${C.names}</span><br>Token ID: <span class="sel">${n.id}</span></div>
         <div class="btns" style="margin:8px 0"><button data-copy="${C.names}">Copy contract</button><button data-copy="${n.id}">Copy token ID</button></div>
         <div class="mute">To add it by hand: open your wallet, go to the NFTs tab, choose Import NFT, then paste the contract and token ID.</div></details></div>`;
@@ -429,6 +442,7 @@ async function loadMine() {
     box.querySelectorAll('[data-renew]').forEach(b => b.onclick = () => renew(b.dataset.renew));
     box.querySelectorAll('[data-prim]').forEach(b => b.onclick = () => setPrimary(b.dataset.prim));
     box.querySelectorAll('[data-nft]').forEach(b => b.onclick = () => watchNft(b.dataset.nft, b.dataset.label, b));
+    box.querySelectorAll('[data-share]').forEach(b => b.onclick = () => openShare(b.dataset.share, +b.dataset.exp, ''));
     box.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => navigator.clipboard.writeText(b.dataset.copy).then(() => status('Copied.'), () => status('Could not copy. Select the text and copy it.', true)));
   } catch (e) { box.innerHTML = `<div class="mute bad">Could not load your names. ${errText(e)}</div>`; }
 }
@@ -448,6 +462,59 @@ async function watchNft(id, label, btn) {
     if (d) d.open = true;
   }
 }
+
+// ---------- share card ----------
+let shareLabel = '';
+async function drawCard(label, expSec, badge) {
+  const c = $('scard'), g = c.getContext('2d'), W = 1200, H = 630;
+  try { await Promise.all([document.fonts.load('800 120px "Bricolage Grotesque"'), document.fonts.load('500 30px "DM Sans"')]); } catch (e) { /* fall back to system fonts */ }
+  const head = '"Bricolage Grotesque", system-ui, sans-serif', body = '"DM Sans", system-ui, sans-serif';
+  const rr = (x, y, w, h, r) => { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); };
+  const pill = (x, y, text, color, align) => {
+    g.font = '500 24px ' + body; const w = g.measureText(text).width + 44, h = 44;
+    const left = align === 'right' ? x - w : align === 'center' ? x - w / 2 : x;
+    rr(left, y, w, h, 22); g.lineWidth = 2; g.strokeStyle = color; g.stroke();
+    g.fillStyle = color; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, left + w / 2, y + h / 2 + 1);
+    g.textBaseline = 'alphabetic';
+  };
+  g.fillStyle = '#04181C'; g.fillRect(0, 0, W, H);
+  g.lineWidth = 2; g.strokeStyle = '#14434b'; g.strokeRect(24, 24, W - 48, H - 48);
+  g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  g.font = '800 56px ' + head; g.fillStyle = '#e6fbf6'; g.fillText('.', 64, 112);
+  const dot = g.measureText('.').width; g.fillStyle = '#97FCE4'; g.fillText('ely', 64 + dot, 112);
+  pill(W - 64, 66, 'Testnet', '#8fb5b0', 'right');
+  const full = label + '.ely'; let size = 200;
+  const fit = () => { g.font = '800 ' + size + 'px ' + head; return g.measureText(full).width; };
+  while (fit() > W - 160 && size > 56) size -= 6;
+  g.textAlign = 'center'; g.fillStyle = '#97FCE4'; g.fillText(full, W / 2, 350);
+  g.font = '500 38px ' + body; g.fillStyle = '#8fb5b0'; g.fillText('Claimed on Elysium', W / 2, 420);
+  if (badge) pill(W / 2, 452, String(badge), '#97FCE4', 'center');
+  g.font = '500 28px ' + body; g.fillStyle = '#8fb5b0';
+  g.textAlign = 'left'; g.fillText('elysiumnameservice.xyz', 64, H - 64);
+  if (expSec) { g.textAlign = 'right'; g.fillText('Valid until ' + new Date(expSec * 1000).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }), W - 64, H - 64); }
+}
+const shareText = () => `Just claimed ${shareLabel}.ely on Elysium. Get yours: https://elysiumnameservice.xyz`;
+const cardBlob = () => new Promise(res => $('scard').toBlob(res, 'image/png'));
+async function openShare(label, expSec, badge) {
+  shareLabel = label;
+  $('stitle').textContent = label + '.ely';
+  try { $('sshare').hidden = !(navigator.canShare && navigator.canShare({ files: [new File([''], 'x.png', { type: 'image/png' })] })); } catch (e) { $('sshare').hidden = true; }
+  $('sharebox').hidden = false;
+  await drawCard(label, expSec, badge);
+  $('sclose').focus();
+}
+const closeShare = () => { $('sharebox').hidden = true; };
+$('sclose').onclick = closeShare;
+$('sharebox').addEventListener('click', e => { if (e.target === $('sharebox')) closeShare(); });
+$('sdl').onclick = async () => {
+  const b = await cardBlob(); const a = document.createElement('a');
+  a.href = URL.createObjectURL(b); a.download = shareLabel + '-ely.png';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+};
+$('sx').onclick = () => window.open('https://x.com/intent/post?text=' + encodeURIComponent(shareText()), '_blank', 'noopener');
+$('sshare').onclick = async () => {
+  try { const b = await cardBlob(); await navigator.share({ files: [new File([b], shareLabel + '-ely.png', { type: 'image/png' })], text: shareText() }); } catch (e) { /* cancelled */ }
+};
 
 // ---------- profile ----------
 const openProfile = async () => {
@@ -558,6 +625,7 @@ const register = (label, years, prog) => guard(async () => {
   status('Registering…'); await t.wait();
   status(`${label}.ely is yours. ${tx(t.hash)}`);
   loadPrograms();
+  openShare(label, (await names.nameExpires(label)).toNumber(), prog ? prog.name : '');
 });
 const renew = label => guard(async () => {
   const p = await ctrl.renewPrice(label, YEAR);
@@ -580,7 +648,7 @@ $('move').onclick = moveNames;
 $('pclose').onclick = closeProfile;
 $('pcopy').onclick = () => navigator.clipboard.writeText(me).then(() => status('Address copied.'), () => status('Could not copy. Select the address above and copy it.', true));
 $('profile').addEventListener('click', e => { if (e.target === $('profile')) closeProfile(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeProfile(); closePicker(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (!$('sharebox').hidden) { closeShare(); return; } closeProfile(); closePicker(); } });
 $('xpick').onclick = closePicker;
 $('picker').addEventListener('click', e => { if (e.target === $('picker')) closePicker(); });
 const openFaq = () => { $('faqbox').open = true; };
