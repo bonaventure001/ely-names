@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>.ely stats</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#04181C;--panel:#082a30;--line:#14434b;--ink:#e6fbf6;--mute:#8fb5b0;--mint:#97FCE4;
+--display:'Bricolage Grotesque',system-ui,sans-serif;--body:'DM Sans',system-ui,sans-serif;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.55 var(--body)}
+main{max-width:720px;margin:0 auto;padding:20px 20px 80px}
+header{display:flex;justify-content:space-between;align-items:center;padding:8px 0 40px}
+.logo{font:800 26px var(--display);letter-spacing:-.02em;color:var(--ink);text-decoration:none}.logo span{color:var(--mint)}
+a{color:var(--mint)}header a.back{color:var(--mute);font-size:14px;text-decoration:none}
+h1{font:800 clamp(32px,6vw,48px)/1.08 var(--display);letter-spacing:-.03em;margin:0 0 10px}
+h2{font:800 20px var(--display);margin:40px 0 10px}
+.sub{color:var(--mute);margin:0 0 24px}
+.pill{font-size:13px;color:var(--mute);border:1px solid var(--line);border-radius:99px;padding:2px 10px;margin-left:8px;white-space:nowrap}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+@media(min-width:620px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.t{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+.t small{display:block;color:var(--mute);font-size:13px}
+.t b{display:block;font:800 28px var(--display);margin-top:2px;letter-spacing:-.02em}
+.chart{display:flex;align-items:flex-end;gap:5px;height:110px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 12px 8px}
+.chart div{flex:1;background:var(--line);border-radius:3px 3px 0 0;min-height:2px}
+.chart div.hi{background:var(--mint)}
+.axis{display:flex;justify-content:space-between;color:var(--mute);font-size:12px;margin-top:6px}
+.row{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line);font-size:15px}
+.row span:last-child{color:var(--mute);text-align:right}
+.row a{text-decoration:none}
+.foot{margin-top:36px;color:var(--mute);font-size:13px}
+button{font:500 14px var(--body);cursor:pointer;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--ink);padding:6px 12px}
+button:disabled{opacity:.5;cursor:default}
+:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
+.empty{color:var(--mute);font-size:15px}
+</style>
+</head>
+<body>
+<main>
+<header><a class="logo" href="./">.<span>ely</span></a><a class="back" href="./">Back to the app</a></header>
+<h1>Stats <span class="pill">Testnet</span></h1>
+<p class="sub">Read straight from the Elysium chain, with nothing hidden. Testnet HYPE has no real value.</p>
+
+<div id="tiles" class="grid"><div class="empty">Loading…</div></div>
+
+<h2>Registrations per day</h2>
+<div id="chart" class="chart"></div>
+<div class="axis"><span id="ax0"></span><span id="ax1"></span></div>
+
+<h2>Latest registrations</h2>
+<div id="latest"><div class="empty">Loading…</div></div>
+
+<h2>Partner programs</h2>
+<div id="programs"><div class="empty">Loading…</div></div>
+
+<p class="foot">Updated <span id="upd">…</span> · <button id="refresh">Refresh</button> · Contracts:
+ <a id="l1" target="_blank" rel="noopener">names</a>, <a id="l2" target="_blank" rel="noopener">shop v3</a>, <a id="l3" target="_blank" rel="noopener">first shop</a> (all verified)<br>
+ The chart is approximate to the hour. Counts include every registration, including names that were later re-registered after expiring.</p>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+<script>
+const RPC = 'https://testnet-rpc.elysium.kinetiq.xyz', EXPL = 'https://elysium.kinetiq.xyz/testnet-explorer', FROM = 10325100;
+const A = { names: '0x13A130B336400409c956dF042C128238F1486ddD', v3: '0xA434b4D98dc9e35205bf186B1750ed2961791F2d', legacy: '0x1dA6a196405dCc455195eb00B4F7D17106164e0A' };
+const ro = new ethers.providers.JsonRpcProvider(RPC);
+const { Interface, formatEther } = ethers.utils;
+const NAMES_I = new Interface(['event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)', 'event NameRegistered(uint256 indexed id, string label, address indexed owner, uint64 expires)', 'event NameRenewed(uint256 indexed id, string label, uint64 expires)']);
+const SHOP = ['event NameRegistered(string label, address indexed owner, uint256 price, uint16 discountBps, uint256 duration)', 'event NameRenewed(string label, address indexed payer, uint256 price, uint256 duration)'];
+const LEG_I = new Interface([...SHOP, 'event FreeClaimed(string label, address indexed owner, uint256 indexed kaolaId)']);
+const V3_I = new Interface([...SHOP, 'event ProgramClaimed(uint256 indexed id, address indexed account, uint256 entryId, string label)']);
+const v3 = new ethers.Contract(A.v3, ['function programCount() view returns (uint256)', 'function getProgram(uint256) view returns (tuple(bytes32 root, address manager, uint16 discountBps, uint64 start, uint64 end, uint64 snapshotAt, uint32 cap, uint32 used, uint8 minLength, bool active, bool checkLegacyKaola, string name, string listURI))'], ro);
+const $ = id => document.getElementById(id);
+const esc = x => String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const n = x => Number(x).toLocaleString();
+const ago = s => s < 90 ? 'just now' : s < 5400 ? Math.round(s / 60) + ' min ago' : s < 129600 ? Math.round(s / 3600) + ' h ago' : Math.round(s / 86400) + ' days ago';
+
+async function logsFor(address, head, i) {
+  const out = [];
+  const range = async (from, to, size) => {
+    try { return await ro.getLogs({ address, fromBlock: from, toBlock: to }); }
+    catch (e) { if (size <= 500) throw e; const mid = Math.floor((from + to) / 2); return [...(await range(from, mid, size / 2)), ...(await range(mid + 1, to, size / 2))]; }
+  };
+  for (let from = FROM; from <= head; from += 50000) out.push(...await range(from, Math.min(from + 49999, head), 50000));
+  return out;
+}
+const parse = (iface, logs) => logs.map(l => { try { return { l, p: iface.parseLog(l) }; } catch (e) { return null; } }).filter(Boolean);
+
+async function load() {
+  $('refresh').disabled = true; $('upd').textContent = 'loading…';
+  try {
+    const head = await ro.getBlockNumber();
+    const [nl, ll, vl] = await Promise.all([logsFor(A.names, head), logsFor(A.legacy, head), logsFor(A.v3, head)]);
+    const nm = parse(NAMES_I, nl), lg = parse(LEG_I, ll), v3p = parse(V3_I, vl);
+    const reg = nm.filter(x => x.p.name === 'NameRegistered'), ren = nm.filter(x => x.p.name === 'NameRenewed');
+    const now = Date.now() / 1000, maxExp = new Map();
+    [...reg, ...ren].forEach(x => { const id = x.p.args.id.toString(), e = x.p.args.expires.toNumber(); if (!maxExp.has(id) || e > maxExp.get(id)) maxExp.set(id, e); });
+    const active = [...maxExp].filter(([, e]) => e > now).map(([id]) => id);
+    const last = new Map();
+    nm.filter(x => x.p.name === 'Transfer').sort((a, b) => a.l.blockNumber - b.l.blockNumber || a.l.logIndex - b.l.logIndex).forEach(x => last.set(x.p.args.tokenId.toString(), x.p.args.to));
+    const owners = new Set(active.map(id => last.get(id)).filter(a => a && a !== ethers.constants.AddressZero));
+    let paid = ethers.BigNumber.from(0), renewals = 0;
+    for (const x of [...lg, ...v3p]) {
+      if (x.p.name === 'NameRegistered') paid = paid.add(x.p.args.price);
+      if (x.p.name === 'NameRenewed') { paid = paid.add(x.p.args.price); renewals++; }
+    }
+    const legacyClaims = lg.filter(x => x.p.name === 'FreeClaimed').length, progClaims = v3p.filter(x => x.p.name === 'ProgramClaimed').length;
+    const tile = (k, v) => `<div class="t"><small>${k}</small><b>${v}</b></div>`;
+    $('tiles').innerHTML = tile('Names registered', n(reg.length)) + tile('Active names', n(active.length)) + tile('Unique owners', n(owners.size))
+      + tile('Renewals', n(renewals)) + tile('Total paid (HYPE)', (+formatEther(paid)).toLocaleString(undefined, { maximumFractionDigits: 2 })) + tile('Claims through programs', n(legacyClaims + progClaims));
+
+    // chart: block time is estimated from a few exact anchors, which is accurate to well within an hour
+    let days = Array(14).fill(0), startDay = new Date(); startDay.setHours(0, 0, 0, 0);
+    if (reg.length) {
+      const first = Math.min(...reg.map(x => x.l.blockNumber)), k = Math.min(12, Math.max(1, head - first));
+      const blocks = [...new Set(Array.from({ length: k + 1 }, (_, i) => Math.round(first + (head - first) * i / k)))];
+      const anchors = (await Promise.all(blocks.map(async b => [b, (await ro.getBlock(b)).timestamp]))).sort((a, b) => a[0] - b[0]);
+      const at = b => { if (anchors.length === 1) return anchors[0][1]; let i = 1; while (i < anchors.length - 1 && b > anchors[i][0]) i++; const [b0, t0] = anchors[i - 1], [b1, t1] = anchors[i]; return t0 + (b - b0) * (t1 - t0) / (b1 - b0); };
+      reg.forEach(x => { const d = Math.floor((startDay.getTime() / 1000 - at(x.l.blockNumber)) / 86400 + 1); if (d >= 0 && d <= 13) days[13 - d]++; });
+    }
+    const mx = Math.max(1, ...days);
+    $('chart').innerHTML = days.map((c, i) => { const day = new Date(startDay.getTime() - (13 - i) * 86400000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); return `<div class="${c === mx && c > 0 ? 'hi' : ''}" style="height:${Math.max(2, Math.round(c / mx * 100))}%" title="${day}: ${c}"></div>`; }).join('');
+    $('ax0').textContent = new Date(startDay.getTime() - 13 * 86400000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); $('ax1').textContent = 'Today';
+
+    const recent = reg.sort((a, b) => b.l.blockNumber - a.l.blockNumber || b.l.logIndex - a.l.logIndex).slice(0, 5);
+    const times = await Promise.all(recent.map(async x => (await ro.getBlock(x.l.blockNumber)).timestamp));
+    $('latest').innerHTML = recent.length ? recent.map((x, i) => `<div class="row"><span><a href="${EXPL}/tx/${x.l.transactionHash}" target="_blank" rel="noopener">${esc(x.p.args.label)}.ely</a></span><span>${ago(now - times[i])}</span></div>`).join('') : '<div class="empty">No registrations yet.</div>';
+
+    const rows = [];
+    const pc = (await v3.programCount()).toNumber();
+    for (let id = 1; id <= pc; id++) { const p = await v3.getProgram(id); rows.push([p.name, p.discountBps >= 10000 ? 'free first year' : (p.discountBps / 100) + '% off first year', p.used + (p.cap ? ' of ' + p.cap : '') + ' claims']); }
+    if (legacyClaims) rows.push(['Kaola holders (first round)', 'free first year', legacyClaims + ' claims']);
+    $('programs').innerHTML = rows.length ? rows.map(r => `<div class="row"><span>${esc(r[0])}<br><small style="color:var(--mute)">${esc(r[1])}</small></span><span>${esc(r[2])}</span></div>`).join('') : '<div class="empty">No programs yet.</div>';
+    $('upd').textContent = new Date().toLocaleTimeString();
+  } catch (e) {
+    $('tiles').innerHTML = '<div class="empty">Could not read the chain right now. Please try again in a moment.</div>'; $('upd').textContent = 'failed';
+  }
+  $('refresh').disabled = false;
+}
+$('l1').href = EXPL + '/address/' + A.names + '?tab=contract'; $('l2').href = EXPL + '/address/' + A.v3 + '?tab=contract'; $('l3').href = EXPL + '/address/' + A.legacy + '?tab=contract';
+$('refresh').onclick = load; load();
+</script>
+</body>
+</html>
