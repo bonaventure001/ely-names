@@ -61,6 +61,7 @@ select,.kid{background:var(--bg);color:var(--ink);border:1px solid var(--line);b
 .panel input.addr{width:100%;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:12px;font:500 15px var(--body);margin:10px 0}
 .wopt{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:12px 14px;margin-top:8px;border-radius:12px}
 .wopt img{width:32px;height:32px;border-radius:8px;flex:none}.wopt small{margin-left:auto;color:var(--mute)}
+.card input.addr{width:100%;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:12px;font:500 15px var(--body);margin:10px 0}
 #status{margin-top:20px;min-height:24px;color:var(--mute);font-size:14px;word-break:break-word}
 #status a{color:var(--mint)}
 footer{margin-top:60px;color:var(--mute);font-size:13px}
@@ -80,6 +81,7 @@ footer{margin-top:60px;color:var(--mute);font-size:13px}
 <h1>Your name on Elysium</h1>
 <p class="sub">Register a .ely name and link it to your wallet. Use it to send and receive crypto on Elysium instead of a long 0x address.</p>
 
+<div id="refnote" hidden style="margin:-12px 0 18px;color:var(--mint);font-size:15px"></div>
 <label class="search" for="q">
   <input id="q" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="yourname" maxlength="63">
   <span class="tld">.ely</span>
@@ -91,10 +93,11 @@ footer{margin-top:60px;color:var(--mute);font-size:13px}
   <details class="faqwrap" id="faqbox"><summary>FAQ</summary>
   <details><summary>What is a .ely name?</summary><p>A short, readable name linked to your wallet address. People can send crypto to yourname.ely instead of copying a long 0x address.</p></details>
   <details><summary>How much does a name cost?</summary><p>The price is per year, depends on the length of the name (shorter names cost more), and is shown in HYPE before you confirm anything. Renewals are charged at the full price.</p></details>
-  <details><summary>How long does a name last?</summary><p>One year. You can renew from the Your names list at any time, and anyone can renew a name. After a name expires you have 90 days to renew it. After that, anyone can register it.</p></details>
+  <details><summary>How long does a name last?</summary><p>One year. You can renew from the Your names list at any time, and anyone can renew a name. After a name expires you have a grace period to renew it (90 days on testnet), and only then can anyone else register it. At first, a temporary premium is added that falls to zero over 14 days.</p></details>
   <details><summary>Why are there two wallet confirmations?</summary><p>Registering takes two steps. The first reserves your choice, and the second completes the registration about 18 seconds later. This stops others from taking a name they spotted in a pending transaction.</p></details>
   <details><summary>Is a name an NFT?</summary><p>Yes. Every name is an NFT you own. You can send it to another wallet or sell it, and ownership moves to the new holder along with a fresh set of records. Expired names cannot be transferred. A 3% royalty applies to resales on marketplaces that support royalties.</p></details>
   <details><summary>What is a primary name?</summary><p>The name shown for your wallet. After registering, open Your names and choose Make primary.</p></details>
+  <details><summary>How do referrals work?</summary><p>Open your profile to find your personal link. Anyone who registers a name through it gets 5% off their first year, and you earn 5% of what they pay. You need an active primary name to earn, and your earnings can be claimed from your profile at any time. Discounts never add together: the best single one applies.</p></details>
   <details><summary>Who gets a free or discounted name?</summary><p>Partner projects can offer their communities a free or discounted first year. Holders of the Kaola NFT at the announced snapshot can claim one free name per Kaola, and other partners, such as an NFT project or a DeFi platform, can reward their holders or most active users. Eligibility comes from a public list published with each offer, and each entry can be used once. If your wallet is on a list, the offer is applied automatically when you connect it.</p></details>
   <details><summary>Why can&rsquo;t I register a certain name?</summary><p>It may already be taken, or it may be a protected word, such as a brand name. If a protected name belongs to your project, contact support.</p></details>
   <details><summary>Is this live on mainnet?</summary><p>Not yet. The service currently runs on the Elysium testnet. Names registered here are for testing and will not carry over to mainnet.</p></details>
@@ -119,6 +122,7 @@ footer{margin-top:60px;color:var(--mute);font-size:13px}
     <div id="pstatus" class="mute" role="status" aria-live="polite" style="margin-top:12px"></div>
     <section id="mine" class="mine"></section>
     <section id="activity" class="mine"></section>
+    <section id="invite" class="mine"></section>
     <div class="mine"><h2>Wallet safety</h2>
       <p>Your names belong to your wallet, so there is no separate account to change. If you are moving to a new wallet, send your names to it below. If your wallet is already compromised, an attacker may be able to move your names too, so act quickly and only from a wallet you still control.</p>
       <details class="nftd" id="mover"><summary class="mute">Move my names to a new wallet</summary>
@@ -149,7 +153,7 @@ const C = {
   chainId: 99801, chainHex: '0x185d9', rpc: 'https://testnet-rpc.elysium.kinetiq.xyz',
   explorer: 'https://elysium.kinetiq.xyz/testnet-explorer',
   names: '0x13A130B336400409c956dF042C128238F1486ddD',
-  ctrl: '0xA434b4D98dc9e35205bf186B1750ed2961791F2d',
+  ctrl: '0x16060310F02DB00C3c98872826318cB930C942F8',
   kaola: '0xE99D7A5CB301f023849888D5F34a43bB7f39D841',
   fromBlock: 10325100 // just before the names contract was deployed
 };
@@ -165,23 +169,29 @@ const NAMES_ABI = [
   'event NameRenewed(uint256 indexed id, string label, uint64 expires)',
   'event PrimaryNameSet(address indexed account, uint256 indexed id)',
   'function labelOf(uint256) view returns (string)',
+  'function GRACE_PERIOD() view returns (uint64)',
   'function expiries(uint256) view returns (uint64)',
   'function tokenURI(uint256) view returns (string)',
   'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)'
 ];
 const CTRL_ABI = [
-  'function registerPrice(string,uint256,address) view returns (uint256,uint16)',
+  'function quote(tuple(string label, address owner, uint256 duration, bytes32 secret, address referrer, uint256 programId, uint256 entryId), address, bytes32[]) view returns (tuple(uint256 base, uint16 discountBps, uint256 afterDiscount, uint256 premium, uint256 total, uint256 reward), uint8)',
+  'function register(tuple(string label, address owner, uint256 duration, bytes32 secret, address referrer, uint256 programId, uint256 entryId), bytes32[]) payable',
   'function renewPrice(string,uint256) view returns (uint256)',
   'function makeCommitment(string,address,bytes32) pure returns (bytes32)',
   'function commit(bytes32)',
-  'function register(string,address,uint256,bytes32) payable',
   'function renew(string,uint256) payable',
   'function programCount() view returns (uint256)',
   'function getProgram(uint256) view returns (tuple(bytes32 root, address manager, uint16 discountBps, uint64 start, uint64 end, uint64 snapshotAt, uint32 cap, uint32 used, uint8 minLength, bool active, bool checkLegacyKaola, string name, string listURI))',
   'function checkClaim(uint256,address,uint256,bytes32[]) view returns (uint8)',
-  'function programPrice(string,uint256,uint256,address) view returns (uint256,uint16)',
-  'function registerWithProgram(string,address,uint256,bytes32,uint256,uint256,bytes32[]) payable',
-  'function isReserved(string) view returns (bool)'
+  'function isReserved(string) view returns (bool)',
+  'function isEligibleReferrer(address) view returns (bool)',
+  'function referralOwed(address) view returns (uint256)',
+  'function referralRewardBps() view returns (uint16)',
+  'function referralDiscountBps() view returns (uint16)',
+  'function premiumStart() view returns (uint256)',
+  'function premiumPeriod() view returns (uint256)',
+  'function claimReferral()'
 ];
 const NFT_ABI = [
   'function balanceOf(address) view returns (uint256)',
@@ -194,6 +204,8 @@ const ro = new ethers.providers.JsonRpcProvider(C.rpc);
 const names = new ethers.Contract(C.names, NAMES_ABI, ro);
 const ctrl = new ethers.Contract(C.ctrl, CTRL_ABI, ro);
 let eth = null, signer = null, me = null, myPrograms = [], myIdSet = new Set(), myRows = [], busy = false;
+let refAddr = '', refLabel = '', refDiscountBps = 500, optOwner = '', GRACE_SEC = 90 * 86400, PREM = { start: ethers.BigNumber.from('2000000000000000000'), period: 14 * 86400 };
+const DUMMY = '0x000000000000000000000000000000000000dEaD'; // stands in for the buyer until a wallet is connected
 const esc = x => String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const hype = wei => (+ethers.utils.formatEther(wei)).toLocaleString(undefined, { maximumFractionDigits: 4 });
@@ -354,30 +366,47 @@ async function renderAvailable(label) {
     return;
   }
   const years = +(document.getElementById('yrs') || { value: 1 }).value || 1;
-  const dur = YEAR * years;
-  let [price, bps] = await ctrl.registerPrice(label, dur, me || ethers.constants.AddressZero);
-  let prog = null;
+  const dur = YEAR * years, zero = ethers.constants.AddressZero;
+  const buyer = me || DUMMY;
+  const dest = ethers.utils.isAddress(optOwner) ? ethers.utils.getAddress(optOwner) : buyer;
+  const ref = refAddr && refAddr.toLowerCase() !== buyer.toLowerCase() ? refAddr : zero;
+  const mk = (pid, eid) => ({ label, owner: dest, duration: dur, secret: ethers.constants.HashZero, referrer: ref, programId: pid, entryId: eid });
+  let q = (await ctrl.quote(mk(0, 0), buyer, []))[0], prog = null;
   for (const pr of myPrograms) {
     if (label.length < pr.minLength) continue;
-    const [pp, pb] = await ctrl.programPrice(label, dur, pr.id, me);
-    if (pp.lt(price)) { price = pp; bps = pb; prog = pr; }
+    const [pq, code] = await ctrl.quote(mk(pr.id, pr.entryId), buyer, pr.proof);
+    if (code === 0 && pq.total.lt(q.total)) { q = pq; prog = pr; }
   }
   const tooShort = !prog && myPrograms.find(pr => label.length < pr.minLength);
-  const offer = pr => (pr.bps >= 10000 ? 'free first year' : (pr.bps / 100) + '% off your first year');
-  const disc = prog ? `<div class="mute">${esc(prog.name)}: ${offer(prog)}. You are on the published list.</div>`
-    : bps > 0 ? `<div class="mute">${bps / 100}% partner discount applied to your first year.</div>`
-    : tooShort ? `<div class="mute">${esc(tooShort.name)} (${offer(tooShort)}) needs names of ${tooShort.minLength} or more characters.</div>` : '';
+  const refValid = ref !== zero && ref.toLowerCase() !== dest.toLowerCase();
+  const pct = b => (b >= 10000 ? 'free first year' : (b / 100) + '% off your first year');
+  let disc = '';
+  if (q.discountBps > 0) {
+    const src = prog && prog.bps === q.discountBps ? esc(prog.name) + ' (you are on the published list)'
+      : refValid && refDiscountBps === q.discountBps ? 'Invited by ' + esc(refLabel) : 'Partner discount';
+    disc = `<div class="mute">${src}: ${pct(q.discountBps)}.</div>`;
+  } else if (tooShort) disc = `<div class="mute">${esc(tooShort.name)} (${pct(tooShort.bps)}) needs names of ${tooShort.minLength} or more characters.</div>`;
+  let prem = '';
+  if (q.premium.gt(0)) {
+    const days = Math.max(1, Math.ceil(q.premium.mul(PREM.period).div(PREM.start).toNumber() / 86400));
+    prem = `<div class="mute">This name recently expired, so a premium of ${hype(q.premium)} HYPE is added. It falls to zero in about ${days} day${days > 1 ? 's' : ''}.</div>`;
+  }
   out.innerHTML = `
   <div class="card">
     <div class="row"><div><div class="name">${label}.ely</div><div class="mute">Available</div></div>
-      <div class="price" id="price">${price.isZero() ? 'Free' : hype(price) + ' HYPE'}</div></div>
-    ${disc}
+      <div class="price" id="price">${q.total.isZero() ? 'Free' : hype(q.total) + ' HYPE'}</div></div>
+    ${disc}${prem}
     <div class="row" style="margin-top:16px">
       <label class="mute">Length <select id="yrs">${[1, 2, 3, 5].map(y => `<option value="${y}" ${y === years ? 'selected' : ''}>${y} year${y > 1 ? 's' : ''}</option>`).join('')}</select></label>
-      <button class="go" id="buy">${me ? (prog && price.isZero() ? 'Claim ' : 'Register ') + label + '.ely' : 'Connect wallet to register'}</button>
+      <button class="go" id="buy">${me ? (prog && q.total.isZero() ? 'Claim ' : 'Register ') + label + '.ely' : 'Connect wallet to register'}</button>
     </div>
+    <details class="nftd" style="margin-top:12px" ${optOwner ? 'open' : ''}><summary class="mute">Send this name to another wallet (optional)</summary>
+      <input class="addr" id="toaddr" placeholder="0x... wallet that will own the name" value="${esc(optOwner)}" autocomplete="off" spellcheck="false">
+      <div class="mute" style="font-size:13px">You pay, and the other wallet owns the name. Handy for keeping valuable names in a safer wallet.</div>
+    </details>
   </div>`;
   $('yrs').onchange = () => renderAvailable(label);
+  $('toaddr').onchange = e => { optOwner = e.target.value.trim(); renderAvailable(label); };
   $('buy').onclick = () => me ? register(label, +$('yrs').value, prog) : connect();
 }
 
@@ -420,7 +449,7 @@ async function loadMine() {
     [...out, ...inc].sort((a, b) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex)
       .forEach(l => { last[l.args.tokenId.toString()] = l.args.to.toLowerCase(); });
     const ids = Object.keys(last).filter(id => last[id] === me.toLowerCase());
-    const GRACE = 90 * 86400;
+    const GRACE = GRACE_SEC;
     const rows = (await Promise.all(ids.map(async id => {
       const [label, exp, uri] = await Promise.all([names.labelOf(id), names.expiries(id), names.tokenURI(id).catch(() => '')]);
       let img = '';
@@ -431,8 +460,11 @@ async function loadMine() {
     const list = rows.map(n => {
       const expired = n.exp < Date.now() / 1000;
       const isPrimary = primary === n.label + '.ely';
+      const days = Math.ceil((n.exp - Date.now() / 1000) / 86400), soon = !expired && days <= 30;
+      const msg = expired ? 'Expired. Renew by ' + fmtDate(n.exp + GRACE) + ' or anyone can register it.'
+        : soon ? `Expires in ${days} day${days === 1 ? '' : 's'} (${fmtDate(n.exp)}). Renew to keep it.` : 'Expires ' + fmtDate(n.exp);
       return `<div class="nrow"><div class="who">${n.img ? `<img class="nft" src="${n.img}" alt="${n.label}.ely NFT">` : ''}<div><span class="name" style="font-size:20px">${n.label}.ely</span>${isPrimary ? '<span class="badge">Primary</span>' : ''}
-        <div class="mute ${expired ? 'bad' : ''}">${expired ? 'Expired. Renew by ' + fmtDate(n.exp + GRACE) : 'Expires ' + fmtDate(n.exp)}</div></div></div>
+        <div class="mute ${expired || soon ? 'bad' : ''}">${msg}</div></div></div>
         <div class="btns"><button data-renew="${n.label}">Renew 1 year</button>${isPrimary ? '' : `<button data-prim="${n.label}">Make primary</button>`}<button data-share="${n.label}" data-exp="${n.exp}">Share</button><button data-nft="${n.id}" data-label="${n.label}">Add NFT to wallet</button></div>
         <details class="nftd"><summary class="mute">NFT details</summary><div class="mute">Contract: <span class="sel">${C.names}</span><br>Token ID: <span class="sel">${n.id}</span></div>
         <div class="btns" style="margin:8px 0"><button data-copy="${C.names}">Copy contract</button><button data-copy="${n.id}">Copy token ID</button></div>
@@ -516,6 +548,44 @@ $('sshare').onclick = async () => {
   try { const b = await cardBlob(); await navigator.share({ files: [new File([b], shareLabel + '-ely.png', { type: 'image/png' })], text: shareText() }); } catch (e) { /* cancelled */ }
 };
 
+// ---------- referrals ----------
+async function loadReferral() {
+  let raw = '';
+  try { const p = new URLSearchParams(location.search).get('ref'); if (p) localStorage.setItem('ely_ref', p.trim().toLowerCase()); raw = localStorage.getItem('ely_ref') || ''; }
+  catch (e) { raw = (new URLSearchParams(location.search).get('ref') || '').trim().toLowerCase(); }
+  raw = raw.replace(/\.ely$/, '');
+  refAddr = ''; refLabel = '';
+  try {
+    GRACE_SEC = Number(await names.GRACE_PERIOD());
+    PREM = { start: await ctrl.premiumStart(), period: Number(await ctrl.premiumPeriod()) };
+    refDiscountBps = await ctrl.referralDiscountBps();
+    let a = '';
+    if (ethers.utils.isAddress(raw)) a = ethers.utils.getAddress(raw);
+    else if (/^[a-z0-9-]{2,63}$/.test(raw)) { a = await names.resolve(raw); if (a === ethers.constants.AddressZero) a = ''; }
+    if (a && await ctrl.isEligibleReferrer(a)) { refAddr = a; refLabel = ethers.utils.isAddress(raw) ? short(a) : raw + '.ely'; }
+  } catch (e) { /* no referral: normal registration still works */ }
+  const note = $('refnote');
+  note.hidden = !refAddr;
+  note.textContent = refAddr ? `Invited by ${refLabel}. You get ${refDiscountBps / 100}% off your first year.` : '';
+}
+loadReferral();
+
+async function loadInvite() {
+  const box = $('invite');
+  if (!me) { box.innerHTML = ''; return; }
+  try {
+    const [owed, eligible, primary, rb, db] = await Promise.all([ctrl.referralOwed(me), ctrl.isEligibleReferrer(me), names.primaryNameOf(me).catch(() => ''), ctrl.referralRewardBps(), ctrl.referralDiscountBps()]);
+    const link = location.origin + '/?ref=' + (primary ? primary.replace(/\.ely$/, '') : me);
+    box.innerHTML = `<h2>Invite and earn</h2>
+      <p>Share your link. People who register through it get ${db / 100}% off their first year, and you earn ${rb / 100}% of what they pay.</p>
+      ${eligible ? '' : '<p class="bad">Set one of your names as your primary name to start earning. Links only pay out for wallets with an active primary name.</p>'}
+      <div class="mute" style="margin:8px 0"><span class="sel">${esc(link)}</span></div>
+      <div class="row"><button id="copyref">Copy link</button><span class="mute">Earned so far: <b style="color:var(--ink)">${hype(owed)} HYPE</b></span><button class="go" id="claimref" ${owed.isZero() ? 'disabled' : ''}>Claim</button></div>`;
+    $('copyref').onclick = () => navigator.clipboard.writeText(link).then(() => status('Link copied.'), () => status('Could not copy. Select the link and copy it.', true));
+    $('claimref').onclick = claimReferral;
+  } catch (e) { box.innerHTML = `<h2>Invite and earn</h2><div class="mute bad">Could not load your referral details. ${errText(e)}</div>`; }
+}
+
 // ---------- profile ----------
 const openProfile = async () => {
   if (!me) return connect();
@@ -525,6 +595,7 @@ const openProfile = async () => {
   $('pname').textContent = (await names.primaryNameOf(me).catch(() => '')) || 'Your profile';
   await loadMine();
   loadActivity();
+  loadInvite();
 };
 const closeProfile = () => { $('profile').hidden = true; };
 
@@ -595,37 +666,42 @@ const moveNames = () => guard(async () => {
 async function guard(fn) {
   if (busy) return; busy = true;
   document.querySelectorAll('button').forEach(b => b.disabled = true);
-  try { await ensureChain(); await fn(); await loadMine(); if (!$('profile').hidden) loadActivity(); } catch (e) { status(isRejected(e) ? 'Cancelled in your wallet.' : errText(e), true); }
+  try { await ensureChain(); await fn(); await loadMine(); if (!$('profile').hidden) { loadActivity(); loadInvite(); } } catch (e) { status(isRejected(e) ? 'Cancelled in your wallet.' : errText(e), true); }
   busy = false;
   document.querySelectorAll('button').forEach(b => b.disabled = false);
 }
 const wctrl = () => ctrl.connect(signer);
 
-async function commitAndWait(label) {
+async function commitAndWait(label, owner) {
   const secret = ethers.utils.hexlify(ethers.utils.randomBytes(32));
-  const c = await ctrl.makeCommitment(label, me, secret);
+  const c = await ctrl.makeCommitment(label, owner, secret);
   status('Step 1 of 2: confirm the reservation in your wallet…');
   await (await wctrl().commit(c)).wait();
   for (let s = 18; s > 0; s--) { status(`Reserved. Registering in ${s}s (this stops others grabbing your name first)…`); await new Promise(r => setTimeout(r, 1000)); }
   return secret;
 }
 const register = (label, years, prog) => guard(async () => {
-  const secret = await commitAndWait(label);
-  const dur = YEAR * years;
-  let t;
-  if (prog) {
-    const [price] = await ctrl.programPrice(label, dur, prog.id, me);
-    status('Step 2 of 2: confirm in your wallet…');
-    t = await wctrl().registerWithProgram(label, me, dur, secret, prog.id, prog.entryId, prog.proof, { value: price });
-  } else {
-    const [price] = await ctrl.registerPrice(label, dur, me);
-    status('Step 2 of 2: confirm registration in your wallet…');
-    t = await wctrl().register(label, me, dur, secret, { value: price });
-  }
+  const raw = ($('toaddr') ? $('toaddr').value : optOwner).trim(); optOwner = raw;
+  if (raw && !ethers.utils.isAddress(raw)) throw new Error('The wallet address for the new owner is not valid.');
+  const dest = raw ? ethers.utils.getAddress(raw) : me, zero = ethers.constants.AddressZero;
+  const secret = await commitAndWait(label, dest);
+  const args = { label, owner: dest, duration: YEAR * years, secret, referrer: refAddr && refAddr.toLowerCase() !== me.toLowerCase() ? refAddr : zero, programId: prog ? prog.id : 0, entryId: prog ? prog.entryId : 0 };
+  const proof = prog ? prog.proof : [];
+  const [q] = await ctrl.quote(args, me, proof); // priced again at the last moment, so an expiry premium that fell meanwhile is never overpaid
+  status('Step 2 of 2: confirm in your wallet…');
+  const t = await wctrl().register(args, proof, { value: q.total });
   status('Registering…'); await t.wait();
-  status(`${label}.ely is yours. ${tx(t.hash)}`);
+  const gift = dest.toLowerCase() !== me.toLowerCase();
+  status(`${label}.ely ${gift ? 'is registered and sent to ' + short(dest) : 'is yours'}. ${tx(t.hash)}`);
   loadPrograms();
-  openShare(label, (await names.nameExpires(label)).toNumber(), prog ? prog.name : '');
+  if (!gift) openShare(label, (await names.nameExpires(label)).toNumber(), prog ? prog.name : '');
+});
+const claimReferral = () => guard(async () => {
+  const owed = await ctrl.referralOwed(me);
+  if (owed.isZero()) throw new Error('Nothing to claim yet.');
+  status('Confirm in your wallet…');
+  const t = await wctrl().claimReferral(); await t.wait();
+  status(`Claimed ${hype(owed)} HYPE. ${tx(t.hash)}`);
 });
 const renew = label => guard(async () => {
   const p = await ctrl.renewPrice(label, YEAR);

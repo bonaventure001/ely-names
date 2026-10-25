@@ -58,21 +58,23 @@ button:disabled{opacity:.5;cursor:default}
 <div id="programs"><div class="empty">Loading…</div></div>
 
 <p class="foot">Updated <span id="upd">…</span> · <button id="refresh">Refresh</button> · Contracts:
- <a id="l1" target="_blank" rel="noopener">names</a>, <a id="l2" target="_blank" rel="noopener">shop v3</a>, <a id="l3" target="_blank" rel="noopener">first shop</a> (all verified)<br>
+ <a id="l1" target="_blank" rel="noopener">names</a>, <a id="l2" target="_blank" rel="noopener">shop v4</a>, <a id="l4" target="_blank" rel="noopener">shop v3</a>, <a id="l3" target="_blank" rel="noopener">first shop</a><br>
  The chart is approximate to the hour. Counts include every registration, including names that were later re-registered after expiring.</p>
 </main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
 <script>
 const RPC = 'https://testnet-rpc.elysium.kinetiq.xyz', EXPL = 'https://elysium.kinetiq.xyz/testnet-explorer', FROM = 10325100;
-const A = { names: '0x13A130B336400409c956dF042C128238F1486ddD', v3: '0xA434b4D98dc9e35205bf186B1750ed2961791F2d', legacy: '0x1dA6a196405dCc455195eb00B4F7D17106164e0A' };
+const A = { names: '0x13A130B336400409c956dF042C128238F1486ddD', v3: '0xA434b4D98dc9e35205bf186B1750ed2961791F2d', legacy: '0x1dA6a196405dCc455195eb00B4F7D17106164e0A', v4: '0x16060310F02DB00C3c98872826318cB930C942F8' };
 const ro = new ethers.providers.JsonRpcProvider(RPC);
 const { Interface, formatEther } = ethers.utils;
 const NAMES_I = new Interface(['event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)', 'event NameRegistered(uint256 indexed id, string label, address indexed owner, uint64 expires)', 'event NameRenewed(uint256 indexed id, string label, uint64 expires)']);
 const SHOP = ['event NameRegistered(string label, address indexed owner, uint256 price, uint16 discountBps, uint256 duration)', 'event NameRenewed(string label, address indexed payer, uint256 price, uint256 duration)'];
 const LEG_I = new Interface([...SHOP, 'event FreeClaimed(string label, address indexed owner, uint256 indexed kaolaId)']);
 const V3_I = new Interface([...SHOP, 'event ProgramClaimed(uint256 indexed id, address indexed account, uint256 entryId, string label)']);
-const v3 = new ethers.Contract(A.v3, ['function programCount() view returns (uint256)', 'function getProgram(uint256) view returns (tuple(bytes32 root, address manager, uint16 discountBps, uint64 start, uint64 end, uint64 snapshotAt, uint32 cap, uint32 used, uint8 minLength, bool active, bool checkLegacyKaola, string name, string listURI))'], ro);
+const V4_I = new Interface([...SHOP, 'event ProgramClaimed(uint256 indexed id, address indexed account, uint256 entryId, string label)', 'event Referral(address indexed referrer, address indexed buyer, string label, uint256 reward)']);
+const PABI = ['function programCount() view returns (uint256)', 'function getProgram(uint256) view returns (tuple(bytes32 root, address manager, uint16 discountBps, uint64 start, uint64 end, uint64 snapshotAt, uint32 cap, uint32 used, uint8 minLength, bool active, bool checkLegacyKaola, string name, string listURI))'];
+const v3 = new ethers.Contract(A.v3, PABI, ro), v4 = new ethers.Contract(A.v4, PABI, ro);
 const $ = id => document.getElementById(id);
 const esc = x => String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const n = x => Number(x).toLocaleString();
@@ -93,8 +95,8 @@ async function load() {
   $('refresh').disabled = true; $('upd').textContent = 'loading…';
   try {
     const head = await ro.getBlockNumber();
-    const [nl, ll, vl] = await Promise.all([logsFor(A.names, head), logsFor(A.legacy, head), logsFor(A.v3, head)]);
-    const nm = parse(NAMES_I, nl), lg = parse(LEG_I, ll), v3p = parse(V3_I, vl);
+    const [nl, ll, vl, v4l] = await Promise.all([logsFor(A.names, head), logsFor(A.legacy, head), logsFor(A.v3, head), logsFor(A.v4, head)]);
+    const nm = parse(NAMES_I, nl), lg = parse(LEG_I, ll), v3p = parse(V3_I, vl), v4p = parse(V4_I, v4l);
     const reg = nm.filter(x => x.p.name === 'NameRegistered'), ren = nm.filter(x => x.p.name === 'NameRenewed');
     const now = Date.now() / 1000, maxExp = new Map();
     [...reg, ...ren].forEach(x => { const id = x.p.args.id.toString(), e = x.p.args.expires.toNumber(); if (!maxExp.has(id) || e > maxExp.get(id)) maxExp.set(id, e); });
@@ -103,14 +105,16 @@ async function load() {
     nm.filter(x => x.p.name === 'Transfer').sort((a, b) => a.l.blockNumber - b.l.blockNumber || a.l.logIndex - b.l.logIndex).forEach(x => last.set(x.p.args.tokenId.toString(), x.p.args.to));
     const owners = new Set(active.map(id => last.get(id)).filter(a => a && a !== ethers.constants.AddressZero));
     let paid = ethers.BigNumber.from(0), renewals = 0;
-    for (const x of [...lg, ...v3p]) {
+    for (const x of [...lg, ...v3p, ...v4p]) {
       if (x.p.name === 'NameRegistered') paid = paid.add(x.p.args.price);
       if (x.p.name === 'NameRenewed') { paid = paid.add(x.p.args.price); renewals++; }
     }
-    const legacyClaims = lg.filter(x => x.p.name === 'FreeClaimed').length, progClaims = v3p.filter(x => x.p.name === 'ProgramClaimed').length;
+    const legacyClaims = lg.filter(x => x.p.name === 'FreeClaimed').length, progClaims = [...v3p, ...v4p].filter(x => x.p.name === 'ProgramClaimed').length;
+    const refs = v4p.filter(x => x.p.name === 'Referral'); let refPaid = ethers.BigNumber.from(0); refs.forEach(x => { refPaid = refPaid.add(x.p.args.reward); });
     const tile = (k, v) => `<div class="t"><small>${k}</small><b>${v}</b></div>`;
     $('tiles').innerHTML = tile('Names registered', n(reg.length)) + tile('Active names', n(active.length)) + tile('Unique owners', n(owners.size))
-      + tile('Renewals', n(renewals)) + tile('Total paid (HYPE)', (+formatEther(paid)).toLocaleString(undefined, { maximumFractionDigits: 2 })) + tile('Claims through programs', n(legacyClaims + progClaims));
+      + tile('Renewals', n(renewals)) + tile('Total paid (HYPE)', (+formatEther(paid)).toLocaleString(undefined, { maximumFractionDigits: 2 })) + tile('Claims through programs', n(legacyClaims + progClaims))
+      + tile('Referred registrations', n(refs.length)) + tile('Referral rewards (HYPE)', (+formatEther(refPaid)).toLocaleString(undefined, { maximumFractionDigits: 4 }));
 
     // chart: block time is estimated from a few exact anchors, which is accurate to well within an hour
     let days = Array(14).fill(0), startDay = new Date(); startDay.setHours(0, 0, 0, 0);
@@ -130,8 +134,10 @@ async function load() {
     $('latest').innerHTML = recent.length ? recent.map((x, i) => `<div class="row"><span><a href="${EXPL}/tx/${x.l.transactionHash}" target="_blank" rel="noopener">${esc(x.p.args.label)}.ely</a></span><span>${ago(now - times[i])}</span></div>`).join('') : '<div class="empty">No registrations yet.</div>';
 
     const rows = [];
-    const pc = (await v3.programCount()).toNumber();
-    for (let id = 1; id <= pc; id++) { const p = await v3.getProgram(id); rows.push([p.name, p.discountBps >= 10000 ? 'free first year' : (p.discountBps / 100) + '% off first year', p.used + (p.cap ? ' of ' + p.cap : '') + ' claims']); }
+    for (const [c, tag] of [[v4, ''], [v3, ' (earlier round)']]) {
+      const pc = (await c.programCount()).toNumber();
+      for (let id = 1; id <= pc; id++) { const p = await c.getProgram(id); if (tag && !p.used) continue; rows.push([p.name + tag, p.discountBps >= 10000 ? 'free first year' : (p.discountBps / 100) + '% off first year', p.used + (p.cap ? ' of ' + p.cap : '') + ' claims']); }
+    }
     if (legacyClaims) rows.push(['Kaola holders (first round)', 'free first year', legacyClaims + ' claims']);
     $('programs').innerHTML = rows.length ? rows.map(r => `<div class="row"><span>${esc(r[0])}<br><small style="color:var(--mute)">${esc(r[1])}</small></span><span>${esc(r[2])}</span></div>`).join('') : '<div class="empty">No programs yet.</div>';
     $('upd').textContent = new Date().toLocaleTimeString();
@@ -140,7 +146,7 @@ async function load() {
   }
   $('refresh').disabled = false;
 }
-$('l1').href = EXPL + '/address/' + A.names + '?tab=contract'; $('l2').href = EXPL + '/address/' + A.v3 + '?tab=contract'; $('l3').href = EXPL + '/address/' + A.legacy + '?tab=contract';
+$('l1').href = EXPL + '/address/' + A.names + '?tab=contract'; $('l2').href = EXPL + '/address/' + A.v4 + '?tab=contract'; $('l4').href = EXPL + '/address/' + A.v3 + '?tab=contract'; $('l3').href = EXPL + '/address/' + A.legacy + '?tab=contract';
 $('refresh').onclick = load; load();
 </script>
 </body>
