@@ -250,7 +250,7 @@ async function ensureChain() {
 
 // Wallet list: every wallet that announces itself (EIP-6963) is shown, and the list appears on every connect.
 // Set WC_PROJECT_ID (free at cloud.reown.com) to also offer WalletConnect, for QR codes and mobile wallet apps.
-const WC_PROJECT_ID = '';
+const WC_PROJECT_ID = '8a2bcc360467f2459c1bdbaf45f5bd1d';
 const announced = new Map();
 window.addEventListener('eip6963:announceProvider', e => {
   if (e.detail && e.detail.info && e.detail.provider) { announced.set(e.detail.info.uuid, e.detail); if (!$('picker').hidden) renderWallets(); }
