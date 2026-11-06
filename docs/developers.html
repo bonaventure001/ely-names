@@ -30,11 +30,17 @@ pre code{color:var(--ink);font-size:13.5px;line-height:1.55}
 .try button:disabled{opacity:.5}.try input:focus-visible,.try button:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
 #out{margin-top:12px;min-height:24px;color:var(--ink);word-break:break-all}
 ul{padding-left:20px}
+.logo{display:inline-flex;align-items:center;gap:8px}.logo .mark{width:30px;height:30px;border-radius:8px;flex:none}
 </style>
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#04181C">
 </head>
 <body>
 <main>
-<header><a class="logo" href="./">.<span>ely</span></a><a class="back" href="./">Back to the app</a></header>
+<header><a class="logo" href="./"><img class="mark" src="logo-96.png" alt="" width="30" height="30">.<span>ely</span></a><a class="back" href="./">Back to the app</a></header>
 
 <h1>Add .ely names to your app</h1>
 <p>Support for .ely takes two read-only calls on one contract. There is no API key and no backend, and it works with any EVM library. Let people type <strong>bona.ely</strong> instead of a long address, and show names instead of addresses.</p>

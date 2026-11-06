@@ -37,11 +37,17 @@ button{font:500 14px var(--body);cursor:pointer;border-radius:10px;border:1px so
 button:disabled{opacity:.5;cursor:default}
 :focus-visible{outline:2px solid var(--mint);outline-offset:2px}
 .empty{color:var(--mute);font-size:15px}
+.logo{display:inline-flex;align-items:center;gap:8px}.logo .mark{width:30px;height:30px;border-radius:8px;flex:none}
 </style>
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#04181C">
 </head>
 <body>
 <main>
-<header><a class="logo" href="./">.<span>ely</span></a><a class="back" href="./">Back to the app</a></header>
+<header><a class="logo" href="./"><img class="mark" src="logo-96.png" alt="" width="30" height="30">.<span>ely</span></a><a class="back" href="./">Back to the app</a></header>
 <h1>Stats <span class="pill">Testnet</span></h1>
 <p class="sub">Read straight from the Elysium chain, with nothing hidden. Testnet HYPE has no real value.</p>
 
